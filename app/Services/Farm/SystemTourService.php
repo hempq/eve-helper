@@ -23,48 +23,60 @@ class SystemTourService
     private ?float $minSecurity = null;
 
     /**
-     * @param  list<int>  $targetSystemIds
+     * Orienteering tour: from a pool of scored candidate systems, pick up to
+     * $count that maximize collected score per jump, then order them for the
+     * fewest jumps. Unlike a pure shortest-tour over a fixed target set, this
+     * deliberately detours into high-value dead-ends — the extra in-and-out
+     * jumps are paid for by the system's score.
+     *
+     * @param  array<int, float>  $candidates  system id => farm score
      * @return object{systems: list<object>, fullPath: list<object>, totalJumps: int,
      *   approachJumps: ?int, revisitCount: int}|null
      */
-    public function tour(int $originSystemId, array $targetSystemIds, ?float $minSecurity = null): ?object
+    public function tour(int $originSystemId, array $candidates, int $count = 8, ?float $minSecurity = null): ?object
     {
         $this->minSecurity = $minSecurity;
 
-        $targets = array_values(array_unique(array_map('intval', $targetSystemIds)));
-        $targets = array_values(array_diff($targets, [$originSystemId]));
+        unset($candidates[$originSystemId]);
 
-        if ($targets === []) {
+        if ($candidates === [] || $count < 1) {
             return null;
         }
 
-        $targetSet = array_flip($targets);
-        $distance = $this->distanceMatrix([$originSystemId, ...$targets]);
+        $ids = array_map('intval', array_keys($candidates));
+        $distance = $this->distanceMatrix([$originSystemId, ...$ids]);
 
-        // Nearest-neighbor from the origin.
+        // Greedy cheapest-insertion by score-per-marginal-jump.
         $order = [];
-        $current = $originSystemId;
-        $remaining = $targets;
+        $remaining = $candidates;
 
-        while ($remaining !== []) {
-            $next = null;
-            $best = PHP_INT_MAX;
+        while (count($order) < $count && $remaining !== []) {
+            $bestId = null;
+            $bestPos = 0;
+            $bestRatio = -INF;
 
-            foreach ($remaining as $candidate) {
-                $d = $distance[$current][$candidate] ?? PHP_INT_MAX;
-                if ($d < $best) {
-                    $best = $d;
-                    $next = $candidate;
+            foreach ($remaining as $id => $score) {
+                [$cost, $pos] = $this->cheapestInsertion($order, (int) $id, $originSystemId, $distance);
+
+                if ($cost === null) {
+                    continue; // unreachable under the security constraint
+                }
+
+                $ratio = $score / max(1, $cost);
+
+                if ($ratio > $bestRatio) {
+                    $bestRatio = $ratio;
+                    $bestId = (int) $id;
+                    $bestPos = $pos;
                 }
             }
 
-            if ($next === null) {
-                break; // disconnected under the current security constraint
+            if ($bestId === null) {
+                break;
             }
 
-            $order[] = $next;
-            $current = $next;
-            $remaining = array_values(array_diff($remaining, [$next]));
+            array_splice($order, $bestPos, 0, [$bestId]);
+            unset($remaining[$bestId]);
         }
 
         if ($order === []) {
@@ -72,6 +84,7 @@ class SystemTourService
         }
 
         $order = $this->twoOpt($order, $originSystemId, $distance);
+        $targetSet = array_flip($order);
 
         [$npcKills, $shipKills, $podKills] = $this->scorer->killActivity();
         $gateCounts = $this->scorer->gateCounts();
@@ -109,7 +122,7 @@ class SystemTourService
         }
 
         $meta = DB::table('solar_systems')
-            ->whereIn('system_id', array_unique([...$fullPathIds, ...$targets]))
+            ->whereIn('system_id', array_unique([...$fullPathIds, ...$order]))
             ->get(['system_id', 'name', 'security'])
             ->keyBy('system_id');
 
@@ -146,6 +159,59 @@ class SystemTourService
             'approachJumps' => $approach,
             'revisitCount' => $revisits,
         ];
+    }
+
+    /**
+     * Cheapest place to insert $id into the open path origin→order, and the
+     * marginal jumps it costs. Returns [null, 0] when $id is unreachable.
+     *
+     * @param  list<int>  $order
+     * @param  array<int, array<int, int>>  $distance
+     * @return array{0: ?int, 1: int}
+     */
+    private function cheapestInsertion(array $order, int $id, int $origin, array $distance): array
+    {
+        $d = fn (int $a, int $b): ?int => $distance[$a][$b] ?? null;
+
+        // Append after the origin when the path is empty.
+        if ($order === []) {
+            $cost = $d($origin, $id);
+
+            return $cost === null ? [null, 0] : [$cost, 0];
+        }
+
+        $bestCost = null;
+        $bestPos = count($order);
+
+        $sequence = [$origin, ...$order];
+
+        // Insert between consecutive nodes.
+        for ($i = 0; $i < count($sequence) - 1; $i++) {
+            $a = $sequence[$i];
+            $b = $sequence[$i + 1];
+            $ac = $d($a, $id);
+            $cb = $d($id, $b);
+            $ab = $d($a, $b);
+
+            if ($ac === null || $cb === null || $ab === null) {
+                continue;
+            }
+
+            $delta = $ac + $cb - $ab;
+            if ($bestCost === null || $delta < $bestCost) {
+                $bestCost = $delta;
+                $bestPos = $i; // insert before order[$i]
+            }
+        }
+
+        // Or append at the end.
+        $tailCost = $d(end($sequence), $id);
+        if ($tailCost !== null && ($bestCost === null || $tailCost < $bestCost)) {
+            $bestCost = $tailCost;
+            $bestPos = count($order);
+        }
+
+        return [$bestCost, $bestPos];
     }
 
     /**

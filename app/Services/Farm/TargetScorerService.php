@@ -132,14 +132,15 @@ class TargetScorerService
                 $supply = 10 * log1p($constNpcHere) + 3 * log1p($ownSites);
                 $vacancy = -$wNpc * log1p($sysNpc) - $wJumps * log1p($traffic);
 
-                // Dead-end bonus only when the system is genuinely quiet.
-                if ($sysNpc < 1.0) {
-                    $vacancy += match ($gates) {
-                        1 => 12,
-                        2 => 4,
-                        default => 0,
-                    };
-                }
+                // Dead-end pockets are where unscanned combat anomalies pile
+                // up (no through traffic clears them). Graded, not gated: a
+                // quiet dead-end gets the full bonus, a busy one (a local's
+                // ratting home) keeps a small share instead of nothing.
+                $vacancy += match ($gates) {
+                    1 => 16,
+                    2 => 5,
+                    default => 0,
+                } * exp(-$sysNpc / 3);
 
                 $danger = -6 * $liveDanger;
                 $logistics = $distance !== null ? -0.5 * $distance : -20;

@@ -1,0 +1,9 @@
+# Long-running Laravel workers, kept alive by DDEV inside the web container
+# whenever the project is up. Applied on `ddev restart`.
+web_extra_daemons:
+  - name: "scheduler"
+    command: "php artisan schedule:work --no-interaction"
+    directory: /var/www/html
+  - name: "queue"
+    command: "php artisan queue:work --sleep=3 --tries=3 --max-time=3600 --no-interaction"
+    directory: /var/www/html

@@ -38,10 +38,10 @@ class SystemTourServiceTest extends TestCase
         $esi->shouldReceive('get')->with('/universe/system_jumps')->andReturn(new EsiResponse([], $expires));
     }
 
-    public function test_tours_targets_in_optimal_order_with_full_path(): void
+    public function test_tours_candidates_in_optimal_order_with_full_path(): void
     {
-        // Targets are the two ends; the tour must pass through Bravo.
-        $tour = $this->app->make(SystemTourService::class)->tour(10, [11, 13]);
+        // Two ends chosen; the tour must pass through Bravo.
+        $tour = $this->app->make(SystemTourService::class)->tour(10, [11 => 5.0, 13 => 5.0], count: 2);
 
         $this->assertSame(['Alpha', 'Charlie'], array_column($tour->systems, 'name'));
         $this->assertSame(3, $tour->totalJumps); // 10->11 (1) + 11->12->13 (2)
@@ -54,18 +54,37 @@ class SystemTourServiceTest extends TestCase
         $this->assertSame(0, $tour->revisitCount);
     }
 
-    public function test_origin_is_never_a_target_and_empty_returns_null(): void
+    public function test_prioritizes_score_per_jump(): void
     {
-        $this->assertNull($this->app->make(SystemTourService::class)->tour(10, [10]));
-        $this->assertNull($this->app->make(SystemTourService::class)->tour(10, []));
+        // Charlie (far, 3 jumps) scores high; Alpha (near, 1 jump) scores low.
+        // With count 1, score-per-jump picks Alpha (low score but cheap) only
+        // if its ratio wins; make Charlie's score high enough to win the detour.
+        $tour = $this->app->make(SystemTourService::class)
+            ->tour(10, [11 => 2.0, 13 => 100.0], count: 1);
+
+        $this->assertSame(['Charlie'], array_column($tour->systems, 'name'));
+
+        // Flip it: a cheap nearby system with a modest score beats a far one.
+        $tour = $this->app->make(SystemTourService::class)
+            ->tour(10, [11 => 10.0, 13 => 12.0], count: 1);
+        $this->assertSame(['Alpha'], array_column($tour->systems, 'name'));
     }
 
-    public function test_highsec_only_makes_nullsec_targets_unreachable(): void
+    public function test_count_caps_the_number_of_stops(): void
     {
-        // minSecurity 0.45 forbids entering Alpha/Bravo/Charlie (all < 0.45),
-        // so no leg can be built.
-        $tour = $this->app->make(SystemTourService::class)->tour(10, [11, 12, 13], minSecurity: 0.45);
+        $tour = $this->app->make(SystemTourService::class)
+            ->tour(10, [11 => 5.0, 12 => 5.0, 13 => 5.0], count: 2);
 
-        $this->assertNull($tour);
+        $this->assertCount(2, $tour->systems);
+    }
+
+    public function test_empty_and_highsec_only_return_null(): void
+    {
+        $this->assertNull($this->app->make(SystemTourService::class)->tour(10, [10 => 5.0]));
+        $this->assertNull($this->app->make(SystemTourService::class)->tour(10, []));
+
+        // minSecurity 0.45 forbids entering the nullsec chain.
+        $this->assertNull($this->app->make(SystemTourService::class)
+            ->tour(10, [11 => 5.0, 12 => 5.0, 13 => 5.0], minSecurity: 0.45));
     }
 }

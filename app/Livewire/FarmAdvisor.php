@@ -115,8 +115,15 @@ class FarmAdvisor extends Component
             )
             : collect();
 
-        $tour = ($originId !== null && $scored->isNotEmpty())
-            ? $tours->tour($originId, $scored->take($this->tourSize)->pluck('systemId')->all(), $minSecurity)
+        // Feed the tour a wider pool (with scores) than it will pick, so the
+        // orienteering can trade a couple of jumps for a high-value dead-end
+        // that a strict top-N would have missed.
+        $candidates = $scored->take(max(30, $this->tourSize * 3))
+            ->mapWithKeys(fn ($s) => [$s->systemId => max(0.1, $s->score)])
+            ->all();
+
+        $tour = ($originId !== null && $candidates !== [])
+            ? $tours->tour($originId, $candidates, $this->tourSize, $minSecurity)
             : null;
 
         return view('livewire.farm-advisor', [
