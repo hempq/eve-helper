@@ -36,6 +36,10 @@ class SdeImportCommand extends Command
             'constellations' => fn () => $importer->importConstellations($this->resolve($dir, 'mapConstellations.csv')),
             'solar systems' => fn () => $importer->importSolarSystems($this->resolve($dir, 'mapSolarSystems.csv')),
             'system jumps' => fn () => $importer->importSystemJumps($this->resolve($dir, 'mapSolarSystemJumps.csv')),
+            'agents' => fn () => $importer->importAgents($this->resolve($dir, 'agtAgents.csv')),
+            'npc corporations' => fn () => $importer->importNpcCorporations($this->resolve($dir, 'crpNPCCorporations.csv')),
+            'npc divisions' => fn () => $importer->importDivisions($this->resolve($dir, 'crpNPCDivisions.csv')),
+            'factions' => fn () => $importer->importFactions($this->resolve($dir, 'chrFactions.csv')),
         ];
 
         foreach ($steps as $label => $step) {

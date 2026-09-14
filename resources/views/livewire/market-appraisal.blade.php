@@ -23,7 +23,7 @@ Gistii B-Type Small Shield Booster"
             @if ($result)
                 <span class="muted" style="font-size: 12.5px">
                     Your rates: sales tax <b class="num">{{ number_format($result->salesTaxRate * 100, 2) }}%</b>,
-                    broker fee <b class="num">{{ number_format($result->brokerFeeRate * 100, 2) }}%</b> (NPC station, standings not included)
+                    broker fee <b class="num">{{ number_format($result->brokerFeeRate * 100, 2) }}%</b> (NPC station, with your standings toward its owner)
                 </span>
             @endif
         </div>

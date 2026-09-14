@@ -67,7 +67,7 @@ class AppraisalService
             : $this->prices->prices($stationId, array_keys($typeQuantities));
 
         $salesTax = $this->fees->salesTaxRate($character);
-        $brokerFee = $this->fees->brokerFeeRate($character);
+        $brokerFee = $this->fees->brokerFeeRate($character, $stationId);
 
         $contractPrices = $this->contracts->prices(array_keys($typeQuantities));
 

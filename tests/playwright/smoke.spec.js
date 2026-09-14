@@ -47,6 +47,17 @@ test('trade finder page renders', async ({ page }) => {
     await expect(page.locator('h1')).not.toBeEmpty();
 });
 
+test('warzone page shows incursions and FW', async ({ page }) => {
+    await page.goto('/warzone');
+    await expect(page.getByRole('heading', { name: /Incursions/ })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'FW occupancy' })).toBeVisible();
+});
+
+test('agent finder lists nearby agents', async ({ page }) => {
+    await page.goto('/agents');
+    await expect(page.getByRole('heading', { name: /Agent finder/ })).toBeVisible();
+});
+
 test('settings page saves routing safety', async ({ page }) => {
     await page.goto('/settings');
     await expect(page.locator('h1')).toContainText(/Settings/i);

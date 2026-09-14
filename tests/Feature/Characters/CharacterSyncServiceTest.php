@@ -107,6 +107,13 @@ class CharacterSyncServiceTest extends TestCase
             ], $expires));
 
         $esi->shouldReceive('get')
+            ->with("/characters/{$id}/standings", [], $character)
+            ->andReturn(new EsiResponse([
+                ['from_id' => 500001, 'from_type' => 'faction', 'standing' => 2.5],
+                ['from_id' => 1000035, 'from_type' => 'npc_corp', 'standing' => 4.1],
+            ], $expires));
+
+        $esi->shouldReceive('get')
             ->with("/characters/{$id}/attributes", [], $character)
             ->andReturn(new EsiResponse([
                 'charisma' => 23,

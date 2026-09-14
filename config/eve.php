@@ -48,6 +48,9 @@ return [
             'esi-contracts.read_character_contracts.v1',
             'esi-characters.read_loyalty.v1',
             'esi-killmails.read_killmails.v1',
+            // Added 2026-09-14 — needs a re-login: standing-aware broker
+            // fees and the agent finder.
+            'esi-characters.read_standings.v1',
         ],
     ],
 

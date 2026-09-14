@@ -29,6 +29,30 @@ class TradeFeeServiceTest extends TestCase
         $this->assertEqualsWithDelta(0.03, $fees->brokerFeeRate($character), 1e-9);
     }
 
+    public function test_broker_fee_credits_station_owner_standings(): void
+    {
+        $character = Character::factory()->create();
+
+        DB::table('stations')->insert([
+            'station_id' => 60003760, 'system_id' => 1, 'name' => 'Jita 4-4', 'corporation_id' => 1000035,
+        ]);
+        DB::table('npc_corporations')->insert([
+            'corporation_id' => 1000035, 'name' => 'Caldari Navy', 'faction_id' => 500001,
+        ]);
+        DB::table('character_standings')->insert([
+            ['character_id' => $character->character_id, 'from_id' => 1000035, 'from_type' => 'npc_corp', 'standing' => 5.0],
+            ['character_id' => $character->character_id, 'from_id' => 500001, 'from_type' => 'faction', 'standing' => 2.0],
+        ]);
+
+        $fees = $this->app->make(TradeFeeService::class);
+
+        // No Connections: 3% − 0.03%·2.0 (faction) − 0.02%·5.0 (corp) = 2.84%.
+        $this->assertEqualsWithDelta(0.0284, $fees->brokerFeeRate($character, 60003760), 1e-9);
+
+        // Without a station the standings play no part.
+        $this->assertEqualsWithDelta(0.03, $fees->brokerFeeRate($character), 1e-9);
+    }
+
     public function test_rates_with_maxed_trade_skills(): void
     {
         $character = Character::factory()->create();

@@ -1,0 +1,2 @@
+factionID,factionName,description,raceIDs,solarSystemID,corporationID,sizeFactor,stationCount,stationSystemCount,militiaCorporationID,iconID
+500001,Caldari State,"The Caldari State",1,30000142,1000035,5,100,50,1000180,0

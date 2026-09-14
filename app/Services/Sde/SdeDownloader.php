@@ -19,6 +19,10 @@ class SdeDownloader
         'mapConstellations.csv',
         'mapSolarSystems.csv',
         'mapSolarSystemJumps.csv',
+        'agtAgents.csv',
+        'crpNPCCorporations.csv',
+        'crpNPCDivisions.csv',
+        'chrFactions.csv',
     ];
 
     public function __construct(

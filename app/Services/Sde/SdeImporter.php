@@ -182,6 +182,61 @@ class SdeImporter
                     'station_id' => (int) $row['stationID'],
                     'system_id' => (int) $row['solarSystemID'],
                     'name' => (string) $row['stationName'],
+                    'corporation_id' => (int) $row['corporationID'] ?: null,
+                ];
+            }
+        })());
+    }
+
+    public function importAgents(string $agtAgentsPath): int
+    {
+        return $this->upsertChunked('agents', 'agent_id', (function () use ($agtAgentsPath) {
+            foreach ($this->csv->rows($agtAgentsPath) as $row) {
+                yield [
+                    'agent_id' => (int) $row['agentID'],
+                    'division_id' => (int) $row['divisionID'],
+                    'corporation_id' => (int) $row['corporationID'],
+                    'location_id' => (int) $row['locationID'],
+                    'level' => (int) $row['level'],
+                    'agent_type_id' => (int) $row['agentTypeID'],
+                    'is_locator' => (bool) $row['isLocator'],
+                ];
+            }
+        })());
+    }
+
+    public function importNpcCorporations(string $crpNPCCorporationsPath): int
+    {
+        return $this->upsertChunked('npc_corporations', 'corporation_id', (function () use ($crpNPCCorporationsPath) {
+            foreach ($this->csv->rows($crpNPCCorporationsPath) as $row) {
+                yield [
+                    'corporation_id' => (int) $row['corporationID'],
+                    'name' => (string) $row['corporationName'],
+                    'faction_id' => (int) $row['factionID'] ?: null,
+                ];
+            }
+        })());
+    }
+
+    public function importFactions(string $chrFactionsPath): int
+    {
+        return $this->upsertChunked('factions', 'faction_id', (function () use ($chrFactionsPath) {
+            foreach ($this->csv->rows($chrFactionsPath) as $row) {
+                yield [
+                    'faction_id' => (int) $row['factionID'],
+                    'name' => (string) $row['factionName'],
+                ];
+            }
+        })());
+    }
+
+    public function importDivisions(string $crpNPCDivisionsPath): int
+    {
+        return $this->upsertChunked('npc_divisions', 'division_id', (function () use ($crpNPCDivisionsPath) {
+            foreach ($this->csv->rows($crpNPCDivisionsPath) as $row) {
+                yield [
+                    'division_id' => (int) $row['divisionID'],
+                    'name' => (string) $row['divisionName'],
                 ];
             }
         })());

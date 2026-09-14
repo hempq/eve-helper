@@ -34,6 +34,7 @@ class CharacterSyncService
         $this->syncAssets($character);
         $this->syncOrders($character);
         $this->syncContracts($character);
+        $this->syncStandings($character);
 
         $character->forceFill(['last_synced_at' => CarbonImmutable::now()])->save();
     }
@@ -164,6 +165,32 @@ class CharacterSyncService
         foreach (array_chunk($rows, 500) as $chunk) {
             DB::table('character_contracts')->upsert($chunk, 'contract_id');
         }
+    }
+
+    private function syncStandings(Character $character): void
+    {
+        // Requires esi-characters.read_standings.v1 — a re-login may be
+        // needed to grant it; degrade quietly until then.
+        try {
+            $standings = $this->esi->get("/characters/{$character->character_id}/standings", [], $character)->data;
+        } catch (\App\Services\Esi\Exceptions\EsiRequestFailed) {
+            return;
+        }
+
+        $rows = array_map(fn (array $s) => [
+            'character_id' => $character->character_id,
+            'from_id' => (int) $s['from_id'],
+            'from_type' => (string) $s['from_type'],
+            'standing' => (float) $s['standing'],
+        ], $standings);
+
+        DB::transaction(function () use ($character, $rows) {
+            DB::table('character_standings')->where('character_id', $character->character_id)->delete();
+
+            foreach (array_chunk($rows, 500) as $chunk) {
+                DB::table('character_standings')->insert($chunk);
+            }
+        });
     }
 
     private function syncOrders(Character $character): void

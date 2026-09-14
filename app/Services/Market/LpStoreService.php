@@ -84,7 +84,7 @@ class LpStoreService
         $corpNames = DB::table('item_types')->whereIn('type_id', array_keys($lpByCorp))->pluck('name', 'type_id');
 
         $salesTax = $this->fees->salesTaxRate($character);
-        $brokerFee = $this->fees->brokerFeeRate($character);
+        $brokerFee = $this->fees->brokerFeeRate($character, self::JITA);
 
         $ranked = collect($offers)->map(function (array $offer) use ($prices, $names, $corpNames, $salesTax, $brokerFee) {
             $typeId = (int) $offer['type_id'];

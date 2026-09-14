@@ -1,0 +1,2 @@
+corporationID,size,extent,solarSystemID,investorID1,investorShares1,investorID2,investorShares2,investorID3,investorShares3,investorID4,investorShares4,friendID,enemyID,publicShares,initialPrice,minSecurity,scattered,fringe,corridor,hub,border,factionID,sizeFactor,stationCount,stationSystemCount,description,iconID,corporationName,tickerName
+1000035,L,N,30000142,,,,,,,,,,,,,,0,0,0,1,0,500001,1,10,5,"Navy corp",0,Caldari Navy,CN
