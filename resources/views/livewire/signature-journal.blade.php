@@ -28,15 +28,23 @@
         @endif
 
         @if ($stats->isNotEmpty())
-            <h2 style="margin-top: 18px">What spawns for you <span class="muted">(30 days)</span></h2>
+            <h2 style="margin-top: 18px">What spawns for you <span class="muted">(30 days, best yield first)</span></h2>
             <table class="sortable">
-                <tr><th>Constellation</th><th class="r">Sites</th><th class="r">Combat</th><th class="r">Done</th></tr>
+                <tr>
+                    <th>Constellation</th><th class="r">Sites</th><th class="r">Combat</th>
+                    <th class="r" title="Escalations gained here">Esc</th><th class="r">Done</th>
+                    <th class="r" title="Sites logged per day actually spent in this constellation — your personal yield">Sites/day</th>
+                    <th class="r">Last visit</th>
+                </tr>
                 @foreach ($stats as $stat)
                     <tr>
                         <td>{{ $stat->constellation }}</td>
                         <td class="r num">{{ $stat->total }}</td>
                         <td class="r num">{{ $stat->combat }}</td>
+                        <td class="r num {{ $stat->escalations > 0 ? 'gold' : 'muted' }}">{{ $stat->escalations ?: '—' }}</td>
                         <td class="r num ok">{{ $stat->done }}</td>
+                        <td class="r num"><b>{{ number_format($stat->total / max(1, $stat->visit_days), 1) }}</b></td>
+                        <td class="r num muted">{{ \Carbon\CarbonImmutable::parse($stat->last_visit)->diffForHumans(short: true) }}</td>
                     </tr>
                 @endforeach
             </table>

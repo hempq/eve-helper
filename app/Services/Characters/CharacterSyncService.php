@@ -35,6 +35,7 @@ class CharacterSyncService
         $this->syncOrders($character);
         $this->syncContracts($character);
         $this->syncStandings($character);
+        $this->syncTransactions($character);
 
         $character->forceFill(['last_synced_at' => CarbonImmutable::now()])->save();
     }
@@ -164,6 +165,28 @@ class CharacterSyncService
 
         foreach (array_chunk($rows, 500) as $chunk) {
             DB::table('character_contracts')->upsert($chunk, 'contract_id');
+        }
+    }
+
+    private function syncTransactions(Character $character): void
+    {
+        // Market buy/sell fills; ESI returns the most recent ~2500. Rows are
+        // immutable, so upserting keeps a growing local history.
+        $transactions = $this->esi->get("/characters/{$character->character_id}/wallet/transactions", [], $character)->data;
+
+        $rows = array_map(fn (array $t) => [
+            'transaction_id' => (int) $t['transaction_id'],
+            'character_id' => $character->character_id,
+            'date' => CarbonImmutable::parse($t['date']),
+            'type_id' => (int) $t['type_id'],
+            'quantity' => (int) $t['quantity'],
+            'unit_price' => (float) $t['unit_price'],
+            'is_buy' => (bool) $t['is_buy'],
+            'location_id' => (int) $t['location_id'],
+        ], $transactions);
+
+        foreach (array_chunk($rows, 500) as $chunk) {
+            DB::table('character_transactions')->upsert($chunk, 'transaction_id');
         }
     }
 

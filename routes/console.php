@@ -20,3 +20,6 @@ Schedule::command('eve:scan-hubs')->twiceDaily(9, 19)->withoutOverlapping();
 // Contract asking prices (deadspace/faction loot) from the EVE Ref
 // public-contracts snapshot.
 Schedule::command('eve:import-contract-prices')->twiceDaily(8, 20)->withoutOverlapping();
+
+// Daily net-worth snapshot (after the morning character sync).
+Schedule::command('eve:record-net-worth')->dailyAt('09:30')->withoutOverlapping();

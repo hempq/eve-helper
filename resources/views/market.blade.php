@@ -10,6 +10,8 @@
 
     <livewire:orders-monitor :character="$character" />
 
+    <livewire:trade-profit-card :character="$character" lazy />
+
     <livewire:contracts-card :character="$character" />
 
     <livewire:lp-store :character="$character" />

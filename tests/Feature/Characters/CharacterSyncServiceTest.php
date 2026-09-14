@@ -107,6 +107,14 @@ class CharacterSyncServiceTest extends TestCase
             ], $expires));
 
         $esi->shouldReceive('get')
+            ->with("/characters/{$id}/wallet/transactions", [], $character)
+            ->andReturn(new EsiResponse([
+                ['transaction_id' => 777001, 'date' => '2026-09-14T09:00:00Z', 'type_id' => 34,
+                    'quantity' => 1000, 'unit_price' => 5.5, 'is_buy' => false, 'location_id' => 60003760,
+                    'client_id' => 1, 'journal_ref_id' => 555002],
+            ], $expires));
+
+        $esi->shouldReceive('get')
             ->with("/characters/{$id}/standings", [], $character)
             ->andReturn(new EsiResponse([
                 ['from_id' => 500001, 'from_type' => 'faction', 'standing' => 2.5],

@@ -12,6 +12,8 @@ test('dashboard shows the character overview', async ({ page }) => {
     await expect(page.locator('h1')).not.toBeEmpty();
     await expect(page.getByText('Total skillpoints')).toBeVisible();
     await expect(page.getByText('Skill queue').first()).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Net worth' })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('heading', { name: /Income & spending/ })).toBeVisible({ timeout: 20_000 });
 });
 
 test('losses card lazy-loads on the dashboard', async ({ page }) => {

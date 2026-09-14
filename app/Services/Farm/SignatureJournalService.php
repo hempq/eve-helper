@@ -132,9 +132,14 @@ class SignatureJournalService
             ->where('sig.first_seen', '>=', now()->subDays($days))
             ->selectRaw("c.name as constellation, COUNT(*) as total,
                 SUM(CASE WHEN sig.category = 'Combat Site' OR sig.sig_group = 'Cosmic Anomaly' THEN 1 ELSE 0 END) as combat,
-                SUM(CASE WHEN sig.status = 'done' THEN 1 ELSE 0 END) as done")
+                SUM(CASE WHEN sig.sig_group = 'Escalation' THEN 1 ELSE 0 END) as escalations,
+                SUM(CASE WHEN sig.status = 'done' THEN 1 ELSE 0 END) as done,
+                COUNT(DISTINCT DATE(sig.first_seen)) as visit_days,
+                MAX(sig.first_seen) as last_visit")
             ->groupBy('c.name')
-            ->orderByDesc('total')
+            // Personal ground truth: which constellation yields the most
+            // sites per day actually spent there.
+            ->orderByRaw('CAST(COUNT(*) AS REAL) / COUNT(DISTINCT DATE(sig.first_seen)) DESC')
             ->limit(10)
             ->get();
     }
