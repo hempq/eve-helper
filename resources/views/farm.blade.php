@@ -7,4 +7,6 @@
     <p class="sub">Target scouting from live activity data, your ratting income, and Thera/Turnur shortcuts.</p>
 
     <livewire:farm-advisor :character="$character" />
+
+    <livewire:signature-journal :character="$character" />
 @endsection
