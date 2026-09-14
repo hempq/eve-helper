@@ -1,0 +1,57 @@
+<?php
+
+namespace App\Providers;
+
+use App\Services\Esi\EsiClient;
+use App\Services\Esi\EsiClientInterface;
+use App\Services\Sde\SdeDownloader;
+use App\Services\Sso\AccessTokenManager;
+use App\Services\Sso\AccessTokenProvider;
+use App\Services\Sso\EveSsoService;
+use App\Services\Sso\JwtValidator;
+use Illuminate\Contracts\Cache\Repository as Cache;
+use Illuminate\Contracts\Foundation\Application;
+use Illuminate\Support\ServiceProvider;
+
+class AppServiceProvider extends ServiceProvider
+{
+    public function register(): void
+    {
+        $this->app->singleton(JwtValidator::class, fn (Application $app) => new JwtValidator(
+            cache: $app->make(Cache::class),
+            jwksUrl: config('eve.sso.jwks_url'),
+            clientId: (string) config('eve.sso.client_id'),
+            issuers: config('eve.sso.issuers'),
+        ));
+
+        $this->app->singleton(EveSsoService::class, fn (Application $app) => new EveSsoService(
+            jwtValidator: $app->make(JwtValidator::class),
+            clientId: (string) config('eve.sso.client_id'),
+            clientSecret: (string) config('eve.sso.client_secret'),
+            authorizeUrl: config('eve.sso.authorize_url'),
+            tokenUrl: config('eve.sso.token_url'),
+            scopes: config('eve.sso.scopes'),
+        ));
+
+        $this->app->singleton(AccessTokenProvider::class, AccessTokenManager::class);
+
+        $this->app->singleton(SdeDownloader::class, fn () => new SdeDownloader(
+            baseUrl: config('eve.sde.base_url'),
+            userAgent: config('eve.esi.user_agent'),
+        ));
+
+        $this->app->singleton(EsiClientInterface::class, fn (Application $app) => new EsiClient(
+            tokens: $app->make(AccessTokenProvider::class),
+            cache: $app->make(Cache::class),
+            baseUrl: config('eve.esi.base_url'),
+            compatibilityDate: config('eve.esi.compatibility_date'),
+            userAgent: config('eve.esi.user_agent'),
+            errorLimitThreshold: config('eve.esi.error_limit_threshold'),
+        ));
+    }
+
+    public function boot(): void
+    {
+        //
+    }
+}
