@@ -28,6 +28,37 @@ class MarketHistoryService
     ) {}
 
     /**
+     * Daily average-price series over the recent window (oldest first) for
+     * sparklines, or null when the type has no history. Cheap after the
+     * first call: the underlying ESI response is cached a day.
+     *
+     * @return ?list<float>
+     */
+    public function dailyPriceSeries(int $regionId, int $typeId, int $days = 30): ?array
+    {
+        return $this->cache->remember(
+            "market:history-series:{$regionId}:{$typeId}",
+            self::CACHE_SECONDS,
+            function () use ($regionId, $typeId, $days): ?array {
+                try {
+                    $rows = $this->esi->get("/markets/{$regionId}/history", ['type_id' => $typeId])->data;
+                } catch (EsiErrorLimited|EsiRequestFailed) {
+                    return null;
+                }
+
+                if ($rows === []) {
+                    return null;
+                }
+
+                return array_values(array_map(
+                    fn (array $r) => (float) ($r['average'] ?? 0),
+                    array_slice($rows, -$days),
+                ));
+            },
+        );
+    }
+
+    /**
      * Average daily traded volume over the recent window, or null when the
      * type has no market history at all (never traded here).
      */

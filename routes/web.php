@@ -18,6 +18,15 @@ Route::get('/market', [MarketController::class, 'show'])->name('market');
 Route::get('/farm', [FarmController::class, 'show'])->name('farm');
 Route::get('/trade', [TradeController::class, 'show'])->name('trade');
 Route::get('/warzone', [\App\Http\Controllers\WarzoneController::class, 'show'])->name('warzone');
+Route::get('/industry', function (\Illuminate\Http\Request $request) {
+    $character = ($id = $request->session()->get('character_id')) !== null
+        ? \App\Models\Character::find($id)
+        : null;
+
+    return $character === null
+        ? redirect()->route('home')
+        : view('industry', ['character' => $character]);
+})->name('industry');
 Route::get('/agents', function (\Illuminate\Http\Request $request) {
     $character = ($id = $request->session()->get('character_id')) !== null
         ? \App\Models\Character::find($id)

@@ -10,6 +10,9 @@ class AppraisalService
     /** Cap history lookups per appraisal (each is an ESI call, cached daily). */
     private const HISTORY_LOOKUP_CAP = 60;
 
+    /** Price sparklines only for the most valuable rows. */
+    private const SPARKLINE_CAP = 8;
+
     public function __construct(
         private readonly PasteParser $parser,
         private readonly PriceProviderInterface $prices,
@@ -117,6 +120,15 @@ class AppraisalService
         }
 
         usort($items, fn (AppraisalItem $a, AppraisalItem $b) => $b->orderNet <=> $a->orderNet);
+
+        // Price sparklines for the top rows (same cached history responses).
+        if ($regionId !== null) {
+            foreach (array_slice($items, 0, self::SPARKLINE_CAP) as $i => $item) {
+                $items[$i] = new AppraisalItem(...array_merge(get_object_vars($item), [
+                    'priceSeries' => $this->history->dailyPriceSeries($regionId, $item->typeId),
+                ]));
+            }
+        }
 
         return $this->buildResult($stationId, $items, $unknownNames, $unparsedLines, $salesTax, $brokerFee);
     }

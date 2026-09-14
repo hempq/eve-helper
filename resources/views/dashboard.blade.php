@@ -61,11 +61,6 @@
     @endif
 
     <div class="cards" style="margin-top: 24px">
-        <livewire:planetary-card :character="$character" lazy />
-        <livewire:industry-jobs-card :character="$character" lazy />
-    </div>
-
-    <div class="cards" style="margin-top: 24px">
         <livewire:training-status :character="$character" />
 
         <div class="card">

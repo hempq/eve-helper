@@ -63,7 +63,20 @@ class SkillPlanner extends Component
             ? null
             : $analysis->reportFromBuckets($this->character, $buckets, $entries->count());
 
+        // Multi-remap segmentation over the plan in training order.
+        $multi = $entries->isEmpty()
+            ? null
+            : app(\App\Services\Skills\MultiRemapPlanner::class)->plan(
+                $entries->map(fn ($e) => (object) [
+                    'primaryAttribute' => $e->primaryAttribute,
+                    'secondaryAttribute' => $e->secondaryAttribute,
+                    'sp' => $e->sp,
+                ])->all(),
+                $analysis->implantBonuses($this->character),
+            );
+
         return view('livewire.skill-planner', [
+            'multi' => $multi,
             'results' => $this->searchResults(),
             'targets' => $targets,
             'targetNames' => $targetNames,

@@ -18,6 +18,8 @@ final readonly class AppraisalItem
         public ?object $contractPrice = null,
         /** Units already listed in sell orders at this hub (the queue ahead of you). */
         public ?int $queueAhead = null,
+        /** @var ?list<float> 30-day daily average price, for the sparkline */
+        public ?array $priceSeries = null,
     ) {}
 
     /**

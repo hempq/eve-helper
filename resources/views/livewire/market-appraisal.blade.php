@@ -69,7 +69,22 @@ Gistii B-Type Small Shield Booster"
                     </tr>
                     @foreach ($result->items as $item)
                         <tr>
-                            <td>{{ $item->name }}</td>
+                            <td>{{ $item->name }}
+                                @if ($item->priceSeries !== null && count($item->priceSeries) >= 2)
+                                    @php
+                                        $min = min($item->priceSeries); $span = max(1e-9, max($item->priceSeries) - $min);
+                                        $pts = collect($item->priceSeries)->values()
+                                            ->map(fn ($v, $i) => round($i * 60 / (count($item->priceSeries) - 1), 1).','.round(13 - ($v - $min) / $span * 12, 1))
+                                            ->implode(' ');
+                                        $up = end($item->priceSeries) >= $item->priceSeries[0];
+                                    @endphp
+                                    <svg viewBox="0 0 60 14" style="width:60px; height:14px; vertical-align:middle; margin-left:6px" preserveAspectRatio="none">
+                                        <polyline points="{{ $pts }}" fill="none" stroke="{{ $up ? 'var(--ok)' : 'var(--bad)' }}" stroke-width="1" vector-effect="non-scaling-stroke">
+                                            <title>30-day price trend</title>
+                                        </polyline>
+                                    </svg>
+                                @endif
+                            </td>
                             <td class="r num">{{ number_format($item->quantity) }}</td>
                             <td class="r num">{{ $item->buyPrice > 0 ? number_format($item->buyPrice, 2) : '—' }}</td>
                             <td class="r num">{{ $item->sellPrice > 0 ? number_format($item->sellPrice, 2) : '—' }}</td>

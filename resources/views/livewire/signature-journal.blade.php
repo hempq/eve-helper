@@ -76,7 +76,9 @@
                             <td class="r num {{ $sig->expires_at && \Carbon\CarbonImmutable::parse($sig->expires_at)->diffInHours(now(), true) > 18 ? 'bad' : 'muted' }}">
                                 {{ $sig->expires_at ? \Carbon\CarbonImmutable::parse($sig->expires_at)->diffForHumans() : '—' }}
                             </td>
-                            <td>
+                            <td style="white-space: nowrap">
+                                <button wire:click="setDestination({{ $sig->system_id }})" title="Set destination in the EVE client"
+                                        style="background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 6px; padding: 1px 8px; cursor: pointer; font: 500 12px var(--font-body);">➤</button>
                                 <button wire:click="markDone({{ $sig->id }})" title="Mark completed"
                                         style="background: none; border: 1px solid var(--ok); color: var(--ok); border-radius: 6px; padding: 1px 8px; cursor: pointer; font: 600 12px var(--font-body);">✓</button>
                             </td>

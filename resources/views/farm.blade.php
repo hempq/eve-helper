@@ -9,8 +9,4 @@
     <livewire:farm-advisor :character="$character" />
 
     <livewire:signature-journal :character="$character" />
-
-    <div class="cards" style="margin-top: 24px">
-        <livewire:mining-card :character="$character" lazy />
-    </div>
 @endsection

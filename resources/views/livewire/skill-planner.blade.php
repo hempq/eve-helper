@@ -99,6 +99,41 @@
             @endif
         </div>
 
+        @if ($multi !== null && $multi->savedMinutes() >= 1440)
+            <div class="card wide" style="margin-bottom: 14px">
+                <h2>Multi-remap plan
+                    <span class="muted" style="text-transform:none; letter-spacing:0">
+                        — {{ $multi->remapCount() }} remaps save {{ \App\Support\Duration::minutes($multi->savedMinutes()) }} vs the single remap
+                    </span>
+                </h2>
+                <div class="tablewrap">
+                    <table>
+                        <tr>
+                            <th>#</th><th>Starts</th><th>Dominant</th><th class="r">SP</th><th class="r">Duration</th>
+                            <th class="r">Per</th><th class="r">Wil</th><th class="r">Int</th><th class="r">Mem</th><th class="r">Cha</th>
+                        </tr>
+                        @foreach ($multi->segments as $i => $segment)
+                            <tr>
+                                <td class="num muted">{{ $i + 1 }}</td>
+                                <td class="num">{{ $i === 0 ? 'now' : 'day '.round($segment->startMinutes / 1440) }}</td>
+                                <td style="text-transform: capitalize">{{ $segment->dominantPrimary }}</td>
+                                <td class="r num">{{ number_format($segment->sp) }}</td>
+                                <td class="r num">{{ \App\Support\Duration::minutes($segment->minutes) }}</td>
+                                <td class="r num"><b>{{ $segment->base->perception }}</b></td>
+                                <td class="r num"><b>{{ $segment->base->willpower }}</b></td>
+                                <td class="r num"><b>{{ $segment->base->intelligence }}</b></td>
+                                <td class="r num"><b>{{ $segment->base->memory }}</b></td>
+                                <td class="r num"><b>{{ $segment->base->charisma }}</b></td>
+                            </tr>
+                        @endforeach
+                    </table>
+                </div>
+                <p class="muted" style="font-size:12.5px; margin-bottom:0">
+                    Plan cut at dominant-primary changes (segments ≥ 30 days); each segment start is one remap.
+                </p>
+            </div>
+        @endif
+
         <div class="card wide">
             <h2>Training order</h2>
             <div class="tablewrap">

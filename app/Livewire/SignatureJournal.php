@@ -60,6 +60,20 @@ class SignatureJournal extends Component
         $this->notice = 'Escalation logged — expires in 24 hours.';
     }
 
+    public function setDestination(int $systemId, EsiClientInterface $esi): void
+    {
+        try {
+            $esi->post('/ui/autopilot/waypoint', [
+                'destination_id' => $systemId,
+                'add_to_beginning' => 'false',
+                'clear_other_waypoints' => 'true',
+            ], $this->character);
+            $this->notice = 'Destination sent to the EVE client. Fly safe o7';
+        } catch (EsiErrorLimited|EsiRequestFailed $e) {
+            $this->notice = 'Could not set the destination ('.$e->getMessage().')';
+        }
+    }
+
     public function markDone(int $signatureId, SignatureJournalService $journal): void
     {
         $journal->markDone($this->character, $signatureId);

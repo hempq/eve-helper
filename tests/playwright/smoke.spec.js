@@ -60,6 +60,18 @@ test('agent finder lists nearby agents', async ({ page }) => {
     await expect(page.getByRole('heading', { name: /Agent finder/ })).toBeVisible();
 });
 
+test('industry page groups jobs, colonies, mining and blueprints', async ({ page }) => {
+    await page.goto('/industry');
+    await expect(page.getByRole('heading', { name: 'Industry jobs' })).toBeVisible({ timeout: 20_000 });
+    await expect(page.getByRole('heading', { name: 'PI colonies' })).toBeVisible({ timeout: 20_000 });
+});
+
+test('station trading card renders on the trade page', async ({ page }) => {
+    await page.goto('/trade');
+    await page.evaluate(() => window.scrollTo(0, document.body.scrollHeight));
+    await expect(page.getByRole('heading', { name: /Station trading/ })).toBeVisible({ timeout: 30_000 });
+});
+
 test('settings page saves routing safety', async ({ page }) => {
     await page.goto('/settings');
     await expect(page.locator('h1')).toContainText(/Settings/i);
