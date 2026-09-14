@@ -17,6 +17,8 @@ Route::get('/remap', [RemapController::class, 'show'])->name('remap');
 Route::get('/market', [MarketController::class, 'show'])->name('market');
 Route::get('/farm', [FarmController::class, 'show'])->name('farm');
 Route::get('/trade', [TradeController::class, 'show'])->name('trade');
+Route::get('/settings', [\App\Http\Controllers\SettingsController::class, 'show'])->name('settings');
+Route::post('/settings', [\App\Http\Controllers\SettingsController::class, 'update'])->name('settings.update');
 
 // Local-only helper so browser automation can reach authenticated pages
 // without going through EVE SSO. Returns 404 outside the local environment.
@@ -32,3 +34,10 @@ Route::get('/dev/login/{characterId}', function (int $characterId) {
 Route::get('/auth/eve', [EveAuthController::class, 'redirect'])->name('eve.login');
 Route::get('/auth/eve/callback', [EveAuthController::class, 'callback'])->name('eve.callback');
 Route::post('/auth/eve/logout', [EveAuthController::class, 'logout'])->name('eve.logout');
+
+Route::post('/character/{characterId}/activate', function (int $characterId, \Illuminate\Http\Request $request) {
+    abort_unless(\App\Models\Character::whereKey($characterId)->exists(), 404);
+    $request->session()->put('character_id', $characterId);
+
+    return back();
+})->name('character.activate');

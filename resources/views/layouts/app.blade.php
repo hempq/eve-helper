@@ -32,6 +32,14 @@
         .char-chip form { margin: 0; }
         .char-chip button { background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 6px; padding: 4px 12px; cursor: pointer; font: 500 12px var(--font-body); }
         .char-chip button:hover { color: var(--ink); border-color: var(--muted); }
+        .char-menu { position: relative; }
+        .char-menu summary { list-style: none; cursor: pointer; color: var(--ink); font-size: 13px; padding: 4px 0; }
+        .char-menu summary::-webkit-details-marker { display: none; }
+        .char-dropdown { position: absolute; right: 0; top: calc(100% + 6px); background: var(--surface2); border: 1px solid var(--line); border-radius: 8px; min-width: 180px; z-index: 60; overflow: hidden; box-shadow: 0 10px 28px rgba(0,0,0,.45); }
+        .char-dropdown form { margin: 0; }
+        .char-item { display: block; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 50%, transparent); color: var(--ink); padding: 8px 12px; font: 500 13px var(--font-body); cursor: pointer; text-decoration: none; }
+        .char-item:hover { background: var(--accent-dim); color: var(--accent); text-decoration: none; }
+        .char-item.add { color: var(--accent); }
 
         main { max-width: 1100px; margin: 0 auto; padding: 24px 20px 60px; }
         h1 { font: 600 24px/1.3 var(--font-display); margin: 0 0 4px; }
@@ -101,14 +109,29 @@
                 <a href="{{ route('market') }}" @class(['active' => request()->routeIs('market')])>Market</a>
                 <a href="{{ route('farm') }}" @class(['active' => request()->routeIs('farm')])>Farm</a>
                 <a href="{{ route('trade') }}" @class(['active' => request()->routeIs('trade')])>Trade</a>
+                <a href="{{ route('settings') }}" @class(['active' => request()->routeIs('settings')])>Settings</a>
             </nav>
             <div class="char-chip">
                 <livewire:safety-setting :character="$character" />
-                <span><b>{{ $character->name }}</b> · <span class="num">{{ number_format($character->total_sp ?? 0) }} SP</span></span>
-                <form method="POST" action="{{ route('eve.logout') }}">
-                    @csrf
-                    <button type="submit">Log out</button>
-                </form>
+                @php $allChars = \App\Models\Character::orderBy('name')->get(['character_id', 'name']); @endphp
+                <details class="char-menu">
+                    <summary><b>{{ $character->name }}</b> · <span class="num">{{ number_format($character->total_sp ?? 0) }} SP</span> ▾</summary>
+                    <div class="char-dropdown">
+                        @foreach ($allChars as $c)
+                            @if ($c->character_id !== $character->character_id)
+                                <form method="POST" action="{{ route('character.activate', $c->character_id) }}">
+                                    @csrf
+                                    <button type="submit" class="char-item">{{ $c->name }}</button>
+                                </form>
+                            @endif
+                        @endforeach
+                        <a href="{{ route('eve.login') }}" class="char-item add">+ Add character</a>
+                        <form method="POST" action="{{ route('eve.logout') }}">
+                            @csrf
+                            <button type="submit" class="char-item">Log out</button>
+                        </form>
+                    </div>
+                </details>
             </div>
         @endif
     </div>
