@@ -229,6 +229,8 @@ class CharacterSyncService
                 'last_clone_jump_date' => isset($data['last_clone_jump_date'])
                     ? CarbonImmutable::parse($data['last_clone_jump_date'])
                     : null,
+                'home_location_id' => $data['home_location']['location_id'] ?? null,
+                'home_location_type' => $data['home_location']['location_type'] ?? null,
             ])->save();
         });
     }
