@@ -28,11 +28,21 @@ services:
              php artisan optimize:clear &&
              php artisan migrate --force &&
              php artisan serve --host=0.0.0.0 --port=8000"
-    # Port 8899 (127.0.0.1:80 is DDEV's router). Reachable from Windows via
-    # WSL2 mirrored networking at localhost:8899, or http://eve-helper.local:8899
-    # with a Windows hosts entry (127.0.0.1 eve-helper.local).
+    # No host port: Caddy is the entrypoint and reaches the app in-network.
+    expose:
+      - "8000"
+
+  # HTTPS entrypoint with the mkcert cert Windows already trusts (DDEV's CA).
+  # Port 8443 because DDEV's router holds 127.0.0.1:443.
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [app]
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - ./certs:/certs:ro
     ports:
-      - "8899:8000"
+      - "8443:8443"
 
   scheduler:
     <<: *app

@@ -1,0 +1,13 @@
+# HTTPS terminator for the always-on stack, using the mkcert cert that the
+# Windows CA already trusts (same CA as DDEV). Proxies to the PHP app.
+{
+	auto_https off
+	admin off
+}
+
+https://eve-helper.local:8443, https://localhost:8443 {
+	tls /certs/eve-helper.local.pem /certs/eve-helper.local-key.pem
+	reverse_proxy app:8000 {
+		header_up X-Forwarded-Proto https
+	}
+}

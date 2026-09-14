@@ -21,12 +21,11 @@ systemctl --no-pager status eve-helper.service | head -12
 echo
 echo "Done. EVE Helper (standalone stack) starts automatically on WSL/systemd boot,"
 echo "independent of DDEV — 'ddev poweroff' will NOT stop it."
-echo "Web app:   http://localhost:8899   (works from Windows immediately)"
-echo "     or:   http://eve-helper.local:8899   (after the Windows hosts entry below)"
+echo "Web app:   https://eve-helper.local:8443   (trusted mkcert cert, same CA as DDEV)"
 echo "Workers:   scheduler + queue run alongside it."
 echo
 echo "On WINDOWS, as Administrator, add to C:\\Windows\\System32\\drivers\\etc\\hosts:"
 echo "  127.0.0.1  eve-helper.local"
 echo
 echo "Then add this callback URL to your EVE application at developers.eveonline.com:"
-echo "  http://eve-helper.local:8899/auth/eve/callback"
+echo "  https://eve-helper.local:8443/auth/eve/callback"
