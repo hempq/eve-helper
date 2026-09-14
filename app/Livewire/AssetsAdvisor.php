@@ -21,6 +21,9 @@ class AssetsAdvisor extends Component
 
     public ?int $locationId = null;
 
+    /** @var 'order'|'instant' */
+    public string $mode = 'order';
+
     public ?string $notice = null;
 
     public function setDestination(int $stationId, EsiClientInterface $esi): void
@@ -77,7 +80,16 @@ class AssetsAdvisor extends Component
             ? DB::table('stations')->where('station_id', $selected->location_id)->value('system_id')
             : ($selected->location_type === 'solar_system' ? $selected->location_id : null);
 
-        $hubs = $comparison->compare($this->character, $selected->typeQuantities, $originSystemId !== null ? (int) $originSystemId : null);
+        if (! in_array($this->mode, ['order', 'instant'], true)) {
+            $this->mode = 'order';
+        }
+
+        $hubs = $comparison->compare(
+            $this->character,
+            $selected->typeQuantities,
+            $originSystemId !== null ? (int) $originSystemId : null,
+            $this->mode,
+        );
 
         $routeSystems = null;
 

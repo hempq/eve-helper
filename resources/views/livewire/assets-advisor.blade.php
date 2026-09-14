@@ -15,6 +15,22 @@
                         </option>
                     @endforeach
                 </select>
+                <div style="display: flex; gap: 4px;">
+                    <button wire:click="$set('mode', 'order')"
+                            style="padding: 8px 14px; border-radius: 6px; cursor: pointer; font: 600 12.5px var(--font-display);
+                                   border: 1px solid {{ $mode === 'order' ? 'var(--accent)' : 'var(--line)' }};
+                                   background: {{ $mode === 'order' ? 'var(--accent-dim)' : 'transparent' }};
+                                   color: {{ $mode === 'order' ? 'var(--accent)' : 'var(--muted)' }};">
+                        Sell orders
+                    </button>
+                    <button wire:click="$set('mode', 'instant')"
+                            style="padding: 8px 14px; border-radius: 6px; cursor: pointer; font: 600 12.5px var(--font-display);
+                                   border: 1px solid {{ $mode === 'instant' ? 'var(--accent)' : 'var(--line)' }};
+                                   background: {{ $mode === 'instant' ? 'var(--accent-dim)' : 'transparent' }};
+                                   color: {{ $mode === 'instant' ? 'var(--accent)' : 'var(--muted)' }};">
+                        Instant (buy orders)
+                    </button>
+                </div>
                 <span wire:loading class="muted">Pricing all hubs…</span>
             </div>
 
@@ -30,23 +46,27 @@
 
     @if ($analysis !== null && $analysis['best'] !== null)
         <div class="tiles">
+            @php
+                $metric = fn ($hub) => $mode === 'instant' ? $hub->instantNet : $hub->orderNet;
+                $other = fn ($hub) => $mode === 'instant' ? $hub->orderNet : $hub->instantNet;
+            @endphp
             <div class="tile">
-                <div class="label">Best hub (sell orders)</div>
+                <div class="label">Best hub ({{ $mode === 'instant' ? 'buy orders — instant' : 'sell orders' }})</div>
                 <div class="value ok">{{ $analysis['best']->systemName }}</div>
-                <div class="hint">net {{ number_format($analysis['best']->orderNet) }} ISK
+                <div class="hint">net {{ number_format($metric($analysis['best'])) }} ISK
                     @if ($analysis['best']->jumps !== null) · {{ $analysis['best']->jumps }} jumps (safer) @endif
                 </div>
             </div>
             <div class="tile">
                 <div class="label">Advantage over #2</div>
                 @php $second = $analysis['hubs'][1] ?? null; @endphp
-                <div class="value gold">{{ $second ? number_format($analysis['best']->orderNet - $second->orderNet) : '—' }} ISK</div>
+                <div class="value gold">{{ $second ? number_format($metric($analysis['best']) - $metric($second)) : '—' }} ISK</div>
                 <div class="hint">{{ $second ? 'vs '.$second->systemName : '' }}</div>
             </div>
             <div class="tile">
-                <div class="label">Instant sell there</div>
-                <div class="value">{{ number_format($analysis['best']->instantNet) }} ISK</div>
-                <div class="hint">if you can't wait for orders</div>
+                <div class="label">{{ $mode === 'instant' ? 'Sell orders there' : 'Instant sell there' }}</div>
+                <div class="value">{{ number_format($other($analysis['best'])) }} ISK</div>
+                <div class="hint">{{ $mode === 'instant' ? 'if you list orders instead' : "if you can't wait for orders" }}</div>
             </div>
             <div class="tile">
                 <div class="label">Autopilot</div>

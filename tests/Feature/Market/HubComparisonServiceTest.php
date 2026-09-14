@@ -35,10 +35,10 @@ class HubComparisonServiceTest extends TestCase
             ]);
         }
 
-        // Amarr pays better per unit.
+        // Amarr wins on sell orders; Jita wins on buy orders (instant).
         Http::fake([
             'market.fuzzwork.co.uk/*station=60003760*' => Http::response([
-                '34' => ['buy' => ['percentile' => 4.0], 'sell' => ['percentile' => 5.0]],
+                '34' => ['buy' => ['percentile' => 6.0], 'sell' => ['percentile' => 5.0]],
             ]),
             'market.fuzzwork.co.uk/*station=60008494*' => Http::response([
                 '34' => ['buy' => ['percentile' => 5.0], 'sell' => ['percentile' => 7.0]],
@@ -46,16 +46,20 @@ class HubComparisonServiceTest extends TestCase
             'market.fuzzwork.co.uk/*' => Http::response([]),
         ]);
 
-        $result = $this->app->make(HubComparisonService::class)
-            ->compare($character, [34 => 1000], originSystemId: 1);
+        $service = $this->app->make(HubComparisonService::class);
 
-        $best = $result['best'];
-        $this->assertSame('Amarr', $best->systemName);
-        $this->assertNull($best->jumps); // unreachable island in this fixture
+        $byOrder = $service->compare($character, [34 => 1000], originSystemId: 1);
+        $this->assertSame('Amarr', $byOrder['best']->systemName);
+        $this->assertNull($byOrder['best']->jumps); // unreachable island in this fixture
 
-        $jita = collect($result['options'])->firstWhere('systemName', 'Jita');
+        $jita = collect($byOrder['options'])->firstWhere('systemName', 'Jita');
         $this->assertSame(2, $jita->jumps);
         $this->assertSame([1, 2, 30000142], $jita->route);
         $this->assertGreaterThan(0, $jita->orderNet);
+
+        // Ranked by instant (hitting buy orders) the best hub flips to Jita.
+        $byInstant = $service->compare($character, [34 => 1000], originSystemId: 1, metric: 'instant');
+        $this->assertSame('Jita', $byInstant['best']->systemName);
+        $this->assertGreaterThan($byInstant['best']->orderNet, $byInstant['best']->instantNet);
     }
 }

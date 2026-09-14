@@ -19,9 +19,11 @@ class HubComparisonService
 
     /**
      * @param  array<int, int>  $typeQuantities  type id => quantity
+     * @param  'order'|'instant'  $metric  rank hubs by sell-order net or by
+     *                                     instant (hit buy orders) net
      * @return array{options: list<HubOption>, best: ?HubOption}
      */
-    public function compare(Character $character, array $typeQuantities, ?int $originSystemId): array
+    public function compare(Character $character, array $typeQuantities, ?int $originSystemId, string $metric = 'order'): array
     {
         $hubSystemIds = DB::table('solar_systems')
             ->whereIn('name', array_column(config('eve.market.hubs'), 'system'))
@@ -49,13 +51,15 @@ class HubComparisonService
             );
         }
 
-        usort($options, fn (HubOption $a, HubOption $b) => $b->orderNet <=> $a->orderNet);
+        $value = fn (HubOption $o): float => $metric === 'instant' ? $o->instantNet : $o->orderNet;
+
+        usort($options, fn (HubOption $a, HubOption $b) => $value($b) <=> $value($a));
 
         $best = $options[0] ?? null;
 
         return [
             'options' => $options,
-            'best' => $best !== null && $best->orderNet > 0 ? $best : null,
+            'best' => $best !== null && $value($best) > 0 ? $best : null,
         ];
     }
 }
