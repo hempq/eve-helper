@@ -167,6 +167,40 @@ class EsiClientTest extends TestCase
         Http::assertSentCount(1);
     }
 
+    public function test_throws_on_http_429_with_retry_after(): void
+    {
+        Http::fake([
+            'esi.evetech.net/*' => Http::response(['error' => 'rate limited'], 429, ['Retry-After' => '30']),
+        ]);
+
+        try {
+            $this->client()->get('/universe/systems/30000142');
+            $this->fail('Expected EsiErrorLimited.');
+        } catch (EsiErrorLimited $e) {
+            $this->assertSame(30, $e->retryAfterSeconds);
+        }
+
+        // The backoff now blocks the next call without touching ESI.
+        $this->expectException(EsiErrorLimited::class);
+        $this->client()->get('/universe/systems/1');
+    }
+
+    public function test_backs_off_when_ratelimit_tokens_run_low(): void
+    {
+        Http::fake([
+            'esi.evetech.net/*' => Http::response(['ok' => true], 200, [
+                'X-Ratelimit-Remaining' => '3',
+                'Retry-After' => '45',
+                'Expires' => now()->addMinutes(5)->toRfc7231String(),
+            ]),
+        ]);
+
+        $this->client()->get('/status'); // succeeds but nearly out of tokens
+
+        $this->expectException(EsiErrorLimited::class);
+        $this->client()->get('/markets/prices');
+    }
+
     public function test_throws_esi_request_failed_on_client_error(): void
     {
         Http::fake([

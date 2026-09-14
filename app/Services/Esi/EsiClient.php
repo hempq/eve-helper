@@ -43,6 +43,7 @@ class EsiClient implements EsiClientInterface
             ->get($this->baseUrl.$path, $query);
 
         $this->trackErrorBudget($response);
+        $this->trackRateLimit($response);
 
         if ($response->status() === 304 && $cached !== null) {
             $cached['expires_at'] = $this->expiresAt($response)->toIso8601String();
@@ -51,9 +52,7 @@ class EsiClient implements EsiClientInterface
             return $this->responseFromCache($cached);
         }
 
-        if ($response->status() === 420) {
-            throw new EsiErrorLimited((int) $response->header('X-Esi-Error-Limit-Reset', '60'));
-        }
+        $this->assertNotRateLimited($response);
 
         if ($response->failed()) {
             throw EsiRequestFailed::fromResponse($path, $response);
@@ -86,10 +85,8 @@ class EsiClient implements EsiClientInterface
             ->post($this->baseUrl.$path.'?'.http_build_query($query));
 
         $this->trackErrorBudget($response);
-
-        if ($response->status() === 420) {
-            throw new EsiErrorLimited((int) $response->header('X-Esi-Error-Limit-Reset', '60'));
-        }
+        $this->trackRateLimit($response);
+        $this->assertNotRateLimited($response);
 
         if ($response->failed()) {
             throw EsiRequestFailed::fromResponse($path, $response);
@@ -149,6 +146,39 @@ class EsiClient implements EsiClientInterface
                 now()->addSeconds($reset)->toIso8601String(),
                 $reset,
             );
+        }
+    }
+
+    /**
+     * The 2025 token-bucket limiter: back off when few tokens remain in the
+     * 15-minute window (X-Ratelimit-Remaining), before hitting a 429.
+     */
+    private function trackRateLimit(Response $response): void
+    {
+        $remaining = $response->header('X-Ratelimit-Remaining');
+
+        if ($remaining !== '' && (int) $remaining <= 5) {
+            // The window is stated as e.g. "150/15m"; back off to its end.
+            $seconds = (int) ($response->header('Retry-After') ?: 60);
+            $this->cache->put(
+                self::BACKOFF_CACHE_KEY,
+                now()->addSeconds($seconds)->toIso8601String(),
+                $seconds,
+            );
+        }
+    }
+
+    private function assertNotRateLimited(Response $response): void
+    {
+        if ($response->status() === 420) {
+            throw new EsiErrorLimited((int) $response->header('X-Esi-Error-Limit-Reset', '60'));
+        }
+
+        if ($response->status() === 429) {
+            $retry = (int) ($response->header('Retry-After') ?: 60);
+            $this->cache->put(self::BACKOFF_CACHE_KEY, now()->addSeconds($retry)->toIso8601String(), $retry);
+
+            throw new EsiErrorLimited($retry);
         }
     }
 
