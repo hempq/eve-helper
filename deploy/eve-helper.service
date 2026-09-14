@@ -1,5 +1,5 @@
 [Unit]
-Description=EVE Helper (DDEV project, auto-start on boot)
+Description=EVE Helper (standalone Docker Compose stack, auto-start on boot)
 Requires=docker.service
 After=docker.service network-online.target
 Wants=network-online.target
@@ -9,10 +9,10 @@ Type=oneshot
 RemainAfterExit=yes
 User=hempq
 Group=hempq
-WorkingDirectory=/home/hempq/apps/eve-helper
-# Login shell so DDEV finds mkcert/CAROOT and the user's PATH.
-ExecStart=/bin/bash -lc 'ddev start -y'
-ExecStop=/bin/bash -lc 'ddev stop'
+WorkingDirectory=/home/hempq/apps/eve-helper/deploy
+# Independent of DDEV: `ddev poweroff` never touches this compose project.
+ExecStart=/usr/bin/docker compose -f /home/hempq/apps/eve-helper/deploy/docker-compose.yml up -d
+ExecStop=/usr/bin/docker compose -f /home/hempq/apps/eve-helper/deploy/docker-compose.yml stop
 TimeoutStartSec=300
 
 [Install]

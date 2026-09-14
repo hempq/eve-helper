@@ -1,0 +1,45 @@
+# Always-on EVE Helper stack, fully independent of DDEV.
+# Start:  docker compose -f deploy/docker-compose.yml up -d --build
+# The web app is served on http://localhost:8899
+#
+# ddev poweroff does NOT affect these containers (separate compose project
+# "eve-helper", separate network, own host port). SQLite keeps it to a single
+# service group with no database container.
+name: eve-helper
+
+x-app: &app
+  build:
+    context: ..
+    dockerfile: deploy/Dockerfile
+  image: eve-helper-app:local
+  restart: unless-stopped
+  volumes:
+    - ..:/app
+    # Prod env (SQLite) shadows the dev .env (MariaDB); its own bootstrap
+    # cache keeps dev's config cache from bleeding in.
+    - ./.env.production:/app/.env:ro
+    - prod-cache:/app/bootstrap/cache
+
+services:
+  app:
+    <<: *app
+    command: >
+      sh -c "touch /app/database/database.sqlite &&
+             php artisan optimize:clear &&
+             php artisan migrate --force &&
+             php artisan serve --host=0.0.0.0 --port=8000"
+    ports:
+      - "8899:8000"
+
+  scheduler:
+    <<: *app
+    command: php artisan schedule:work --no-interaction
+    depends_on: [app]
+
+  queue:
+    <<: *app
+    command: php artisan queue:work --sleep=3 --tries=3 --max-time=3600 --no-interaction
+    depends_on: [app]
+
+volumes:
+  prod-cache:

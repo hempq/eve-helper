@@ -13,5 +13,10 @@ systemctl start eve-helper.service
 systemctl --no-pager status eve-helper.service | head -12
 
 echo
-echo "Done. EVE Helper will now start automatically whenever WSL/systemd boots."
-echo "The web app, scheduler and queue worker all come up with it."
+echo "Done. EVE Helper (standalone stack) starts automatically on WSL/systemd boot,"
+echo "independent of DDEV — 'ddev poweroff' will NOT stop it."
+echo "Web app:   http://localhost:8899"
+echo "Workers:   scheduler + queue run alongside it."
+echo
+echo "One-time: add this callback URL to your EVE application at developers.eveonline.com:"
+echo "  http://localhost:8899/auth/eve/callback"
