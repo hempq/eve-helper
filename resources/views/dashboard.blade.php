@@ -107,4 +107,6 @@
             <p class="muted" style="margin-bottom:0">… and {{ $queue->count() - 20 }} more entries.</p>
         @endif
     </div>
+
+    <livewire:losses-card :character="$character" lazy />
 @endsection

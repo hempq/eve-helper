@@ -55,6 +55,12 @@ class AppServiceProvider extends ServiceProvider
             userAgent: config('eve.esi.user_agent'),
         ));
 
+        $this->app->singleton(\App\Services\Killmails\LossHistoryService::class, fn (Application $app) => new \App\Services\Killmails\LossHistoryService(
+            cache: $app->make(Cache::class),
+            esi: $app->make(EsiClientInterface::class),
+            userAgent: config('eve.esi.user_agent'),
+        ));
+
         $this->app->singleton(SdeDownloader::class, fn () => new SdeDownloader(
             baseUrl: config('eve.sde.base_url'),
             userAgent: config('eve.esi.user_agent'),
