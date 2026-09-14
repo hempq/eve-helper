@@ -31,6 +31,7 @@ class SdeImportCommand extends Command
                 $this->resolve($dir, 'invGroups.csv'),
                 $this->resolve($dir, 'dgmTypeAttributes.csv'),
             ),
+            'stations' => fn () => $importer->importStations($this->resolve($dir, 'staStations.csv')),
             'regions' => fn () => $importer->importRegions($this->resolve($dir, 'mapRegions.csv')),
             'constellations' => fn () => $importer->importConstellations($this->resolve($dir, 'mapConstellations.csv')),
             'solar systems' => fn () => $importer->importSolarSystems($this->resolve($dir, 'mapSolarSystems.csv')),

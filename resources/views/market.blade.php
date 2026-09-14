@@ -4,7 +4,11 @@
 
 @section('content')
     <h1>Market advisor</h1>
-    <p class="sub">Loot appraisal with your real tax rates — 5%-percentile hub prices via Fuzzwork.</p>
+    <p class="sub">Your real assets, your real tax rates — hub comparison with safer-route jumps and gank warnings.</p>
 
-    <livewire:market-appraisal :character="$character" />
+    <livewire:assets-advisor :character="$character" />
+
+    <div style="margin-top: 24px">
+        <livewire:market-appraisal :character="$character" />
+    </div>
 @endsection

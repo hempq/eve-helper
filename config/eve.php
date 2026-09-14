@@ -36,6 +36,9 @@ return [
             'esi-location.read_ship_type.v1',
             'esi-ui.write_waypoint.v1',
             'esi-search.search_structures.v1',
+            // Player structure names for asset locations (takes effect after
+            // the next EVE login).
+            'esi-universe.read_structures.v1',
         ],
     ],
 

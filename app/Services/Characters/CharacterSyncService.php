@@ -29,6 +29,7 @@ class CharacterSyncService
         $this->syncAttributes($character);
         $this->syncImplants($character);
         $this->syncWallet($character);
+        $this->syncAssets($character);
 
         $character->forceFill(['last_synced_at' => CarbonImmutable::now()])->save();
     }
@@ -80,6 +81,30 @@ class CharacterSyncService
 
             foreach (array_chunk($rows, 500) as $chunk) {
                 DB::table('character_skill_queue')->insert($chunk);
+            }
+        });
+    }
+
+    private function syncAssets(Character $character): void
+    {
+        $assets = $this->esi->getAllPages("/characters/{$character->character_id}/assets", [], $character);
+
+        $rows = array_map(fn (array $asset) => [
+            'character_id' => $character->character_id,
+            'item_id' => $asset['item_id'],
+            'type_id' => $asset['type_id'],
+            'quantity' => $asset['quantity'],
+            'location_id' => $asset['location_id'],
+            'location_flag' => $asset['location_flag'],
+            'location_type' => $asset['location_type'],
+            'is_singleton' => $asset['is_singleton'],
+        ], $assets);
+
+        DB::transaction(function () use ($character, $rows) {
+            DB::table('character_assets')->where('character_id', $character->character_id)->delete();
+
+            foreach (array_chunk($rows, 500) as $chunk) {
+                DB::table('character_assets')->insert($chunk);
             }
         });
     }

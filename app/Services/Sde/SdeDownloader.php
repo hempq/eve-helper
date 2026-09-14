@@ -14,6 +14,7 @@ class SdeDownloader
         'invTypes.csv',
         'invGroups.csv',
         'dgmTypeAttributes.csv',
+        'staStations.csv',
         'mapRegions.csv',
         'mapConstellations.csv',
         'mapSolarSystems.csv',

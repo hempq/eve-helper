@@ -26,6 +26,8 @@ class SdeImportTest extends TestCase
         $this->assertSame(3, DB::table('skill_types')->count());
         $this->assertSame(1, DB::table('skill_prerequisites')->count());
         $this->assertSame(2, DB::table('implant_bonuses')->count());
+        $this->assertSame(1, DB::table('stations')->count());
+        $this->assertStringContainsString('Caldari Navy', DB::table('stations')->where('station_id', 60003760)->value('name'));
         $this->assertSame(1, DB::table('regions')->count());
         $this->assertSame(1, DB::table('constellations')->count());
         $this->assertSame(2, DB::table('solar_systems')->count());

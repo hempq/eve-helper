@@ -78,6 +78,36 @@ class EsiClient implements EsiClientInterface
         );
     }
 
+    public function post(string $path, array $query, Character $character): void
+    {
+        $this->assertErrorBudgetAvailable();
+
+        $response = $this->pendingRequest($character, null)
+            ->post($this->baseUrl.$path.'?'.http_build_query($query));
+
+        $this->trackErrorBudget($response);
+
+        if ($response->status() === 420) {
+            throw new EsiErrorLimited((int) $response->header('X-Esi-Error-Limit-Reset', '60'));
+        }
+
+        if ($response->failed()) {
+            throw EsiRequestFailed::fromResponse($path, $response);
+        }
+    }
+
+    public function getAllPages(string $path, array $query = [], ?Character $character = null): array
+    {
+        $first = $this->get($path, [...$query, 'page' => 1], $character);
+        $rows = $first->data;
+
+        for ($page = 2; $page <= $first->pages; $page++) {
+            $rows = [...$rows, ...$this->get($path, [...$query, 'page' => $page], $character)->data];
+        }
+
+        return $rows;
+    }
+
     private function pendingRequest(?Character $character, ?string $etag): PendingRequest
     {
         $request = Http::withHeaders([

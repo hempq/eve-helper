@@ -62,6 +62,15 @@ class CharacterSyncServiceTest extends TestCase
             ->with("/characters/{$id}/wallet", [], $character)
             ->andReturn(new EsiResponse([12_345_678.90], $expires));
 
+        $esi->shouldReceive('getAllPages')
+            ->with("/characters/{$id}/assets", [], $character)
+            ->andReturn([
+                ['item_id' => 9001, 'type_id' => 587, 'quantity' => 1, 'location_id' => 60003760,
+                    'location_flag' => 'Hangar', 'location_type' => 'station', 'is_singleton' => true],
+                ['item_id' => 9002, 'type_id' => 34, 'quantity' => 2500, 'location_id' => 60003760,
+                    'location_flag' => 'Hangar', 'location_type' => 'station', 'is_singleton' => false],
+            ]);
+
         $esi->shouldReceive('get')
             ->with("/characters/{$id}/attributes", [], $character)
             ->andReturn(new EsiResponse([
@@ -107,6 +116,10 @@ class CharacterSyncServiceTest extends TestCase
         $this->assertEqualsCanonicalizing([10216, 10217], array_map(intval(...), $implants));
 
         $this->assertEqualsWithDelta(12_345_678.90, (float) $character->wallet_balance, 0.01);
+
+        $assets = DB::table('character_assets')->where('character_id', $character->character_id)->get();
+        $this->assertCount(2, $assets);
+        $this->assertSame(2500, (int) $assets->firstWhere('type_id', 34)->quantity);
     }
 
     public function test_queue_is_replaced_not_appended_on_resync(): void

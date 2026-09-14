@@ -23,7 +23,7 @@ class AppraisalService
             ->keyBy(fn ($t) => mb_strtolower($t->name));
 
         $unknown = [];
-        $resolved = [];
+        $typeQuantities = [];
 
         foreach ($parsed['items'] as $name => $quantity) {
             $type = $types->get(mb_strtolower($name));
@@ -34,30 +34,53 @@ class AppraisalService
                 continue;
             }
 
-            $resolved[] = ['type' => $type, 'quantity' => $quantity];
+            $typeQuantities[(int) $type->type_id] = ($typeQuantities[(int) $type->type_id] ?? 0) + $quantity;
         }
 
-        $priceMap = $resolved === [] ? [] : $this->prices->prices(
-            $stationId,
-            array_map(fn ($r) => (int) $r['type']->type_id, $resolved),
-        );
+        return $this->appraiseQuantities($character, $stationId, $typeQuantities, $unknown, $parsed['unparsed']);
+    }
+
+    /**
+     * @param  array<int, int>  $typeQuantities  type id => quantity
+     * @param  list<string>  $unknownNames
+     * @param  list<string>  $unparsedLines
+     */
+    public function appraiseQuantities(
+        Character $character,
+        int $stationId,
+        array $typeQuantities,
+        array $unknownNames = [],
+        array $unparsedLines = [],
+    ): AppraisalResult {
+        $types = $typeQuantities === [] ? collect() : DB::table('item_types')
+            ->whereIn('type_id', array_keys($typeQuantities))
+            ->get(['type_id', 'name', 'volume'])
+            ->keyBy('type_id');
+
+        $priceMap = $typeQuantities === []
+            ? []
+            : $this->prices->prices($stationId, array_keys($typeQuantities));
 
         $salesTax = $this->fees->salesTaxRate($character);
         $brokerFee = $this->fees->brokerFeeRate($character);
 
         $items = [];
 
-        foreach ($resolved as $row) {
-            $typeId = (int) $row['type']->type_id;
+        foreach ($typeQuantities as $typeId => $quantity) {
+            $type = $types->get($typeId);
+
+            if ($type === null) {
+                continue;
+            }
+
             $buy = $priceMap[$typeId]['buy'] ?? 0.0;
             $sell = $priceMap[$typeId]['sell'] ?? 0.0;
-            $quantity = $row['quantity'];
 
             $items[] = new AppraisalItem(
                 typeId: $typeId,
-                name: $row['type']->name,
+                name: $type->name,
                 quantity: $quantity,
-                volume: $row['type']->volume !== null ? (float) $row['type']->volume : null,
+                volume: $type->volume !== null ? (float) $type->volume : null,
                 buyPrice: $buy,
                 sellPrice: $sell,
                 // Hitting buy orders: sales tax only.
@@ -72,8 +95,8 @@ class AppraisalService
         return new AppraisalResult(
             stationId: $stationId,
             items: $items,
-            unknownNames: $unknown,
-            unparsedLines: $parsed['unparsed'],
+            unknownNames: $unknownNames,
+            unparsedLines: $unparsedLines,
             salesTaxRate: $salesTax,
             brokerFeeRate: $brokerFee,
         );

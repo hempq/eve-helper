@@ -174,6 +174,19 @@ class SdeImporter
         ];
     }
 
+    public function importStations(string $staStationsPath): int
+    {
+        return $this->upsertChunked('stations', 'station_id', (function () use ($staStationsPath) {
+            foreach ($this->csv->rows($staStationsPath) as $row) {
+                yield [
+                    'station_id' => (int) $row['stationID'],
+                    'system_id' => (int) $row['solarSystemID'],
+                    'name' => (string) $row['stationName'],
+                ];
+            }
+        })());
+    }
+
     public function importRegions(string $mapRegionsPath): int
     {
         return $this->upsertChunked('regions', 'region_id', (function () use ($mapRegionsPath) {
