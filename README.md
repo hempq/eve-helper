@@ -1,59 +1,146 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# EVE Helper
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+A self-hosted companion app for a solo EVE Online pilot: it pulls your characters through
+[ESI](https://developers.eveonline.com/) and turns the data into decisions — what to train,
+where to sell, where to farm, and what deserves an alert.
 
-## About Laravel
+Built with **Laravel 12 + Livewire 3 + SQLite**, shipped as an always-on **Docker Compose**
+stack with HTTPS (Caddy + mkcert). ~170 PHPUnit tests and a Playwright E2E smoke suite.
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+## Features
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+| Page | What it does |
+|---|---|
+| **Dashboard** | Character overview, net-worth trend (daily snapshots, net of your sales tax), income/spending breakdown, daily earnings chart, multi-character account overview, ship-loss history (zKillboard), in-app alert bell |
+| **Skills / Planner / Remap** | Skill browser, prerequisite-resolving plan builder, EVEMon-style remap optimizer (14 641 candidates), **multi-remap segmentation** (queue and plans), injector/extractor ROI |
+| **Market** | Loot appraisal (paste or assets) with real tax/broker fees, standing-aware broker rates, order-book-depth fill times, 30-day price sparklines, contract-ask fallback for deadspace loot, hub comparison, multi-stop sell-trip planner, undercut monitor (citadels included), contracts, LP-store ISK/LP ranking (sell vs instant), saved-fitting replacement costs, realized trading profit (FIFO over actual fills) |
+| **Farm** | Region- or **pirate-faction-wide** system scoring from activity proxies (score v7: 2h availability EWMA vs 3-day competition average, backlog/surge trends, dead-end bonuses, live-kill veto), GRASP orienteering tour with waypoint push to the client, probe-scan signature journal with escalation timers and per-constellation yield stats, ratting ISK/h from bounty ticks |
+| **Trade** | Hub-to-hub hauling flips from full order-book scans (parallel, every 4h) and a **station-trading** scanner (bid/ask spreads net of both broker fees + tax, scam walls filtered) |
+| **Warzone** | Live incursions and faction-warfare occupancy — informational; routes detour around them via hazard-aware routing (toggleable) |
+| **Agents** | Standings-checked mission-agent finder (Connections included) and R&D datacore income |
+| **Industry** | Industry jobs (ready-to-deliver alerts), blueprint library (ME/TE), PI colonies with extractor-expiry alerts, mining ledger |
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+Every ISK figure in the app is **net of your actual sales tax and broker fees**
+(skills + standings toward the station owner).
 
-## Learning Laravel
+### Data sources
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework. You can also check out [Laravel Learn](https://laravel.com/learn), where you will be guided through building a modern Laravel application.
+ESI (compat-date client with ETag caching, error-limit and 2025 token-bucket handling) ·
+Fuzzwork (SDE CSVs, market aggregates) · EVE Ref (public-contracts snapshots) ·
+zKillboard (losses) · EVE-Scout (Thera/Turnur wormholes).
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+## Requirements
 
-## Laravel Sponsors
+- Docker with the Compose plugin
+- [mkcert](https://github.com/FiloSottile/mkcert) for the local HTTPS certificate
+- An EVE developer application (free): <https://developers.eveonline.com>
+- Node 18+ only if you want to run the Playwright E2E suite
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+## Installation
 
-### Premium Partners
+### 1. Clone and configure
 
-- **[Vehikl](https://vehikl.com)**
-- **[Tighten Co.](https://tighten.co)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Redberry](https://redberry.international/laravel-development)**
-- **[Active Logic](https://activelogic.com)**
+```bash
+git clone https://github.com/hempq/eve-helper.git
+cd eve-helper
+cp .env.example deploy/.env.production
+```
 
-## Contributing
+Edit `deploy/.env.production`:
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+```dotenv
+APP_ENV=production
+APP_DEBUG=false
+APP_URL=https://eve-helper.local:8443
+DB_CONNECTION=sqlite
 
-## Code of Conduct
+EVE_CLIENT_ID=...          # from step 2
+EVE_CLIENT_SECRET=...      # from step 2
+EVE_ESI_USER_AGENT="EveHelper/1.0 (your-email@example.com)"  # ESI requires a contact
+```
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+### 2. Register the EVE application
 
-## Security Vulnerabilities
+On <https://developers.eveonline.com> create an application:
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+- type: **Authentication & API Access**
+- callback URL: `https://eve-helper.local:8443/auth/eve/callback` (must match exactly)
+- scopes: everything listed in `config/eve.php` under `sso.scopes`
 
-## License
+Copy the client ID/secret into `deploy/.env.production`.
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+### 3. HTTPS certificate and hostname
+
+EVE SSO only accepts plain-http callbacks on localhost, so the app runs behind HTTPS:
+
+```bash
+mkcert -install
+mkcert -cert-file deploy/certs/eve-helper.local.pem \
+       -key-file  deploy/certs/eve-helper.local-key.pem \
+       eve-helper.local localhost
+```
+
+Add to your hosts file (`/etc/hosts`, and on WSL2 also `C:\Windows\System32\drivers\etc\hosts`):
+
+```
+127.0.0.1 eve-helper.local
+```
+
+### 4. Start the stack
+
+```bash
+deploy/dc up -d --build
+```
+
+This starts four containers: **app** (migrations run automatically on boot), **caddy**
+(HTTPS on :8443), **scheduler** and **queue**. The app is at **<https://eve-helper.local:8443>**.
+
+Optional boot autostart (systemd): `sudo bash deploy/install-autostart.sh`
+
+### 5. Import static data
+
+```bash
+deploy/dc artisan eve:sde-import            # Fuzzwork SDE: types, skills, universe, agents (~min)
+deploy/dc artisan eve:import-contract-prices # public-contract asking prices
+deploy/dc artisan eve:scan-hubs              # hub order books (~1 min, parallel)
+```
+
+### 6. Log in
+
+Open the app and sign in through EVE SSO. The scheduler keeps everything fresh from
+then on:
+
+| Job | Cadence |
+|---|---|
+| `eve:sync-characters` | every 15 min |
+| `eve:check-alerts` | every 30 min |
+| `eve:record-activity` (farm scoring history) | hourly |
+| `eve:scan-hubs` (order books) | every 4 h |
+| `eve:import-contract-prices` | twice daily |
+| `eve:record-net-worth` | daily |
+
+> **Note:** farm backlog/surge trends need ~5 days of hourly activity history before
+> they activate; the net-worth trend line appears after a few daily snapshots.
+
+## Development
+
+```bash
+deploy/dc artisan <cmd>     # artisan in the app container
+deploy/dc composer <cmd>    # composer
+deploy/dc test              # PHPUnit suite
+npm install && npm run test:e2e   # Playwright E2E against https://localhost:8443
+```
+
+The E2E suite authenticates through `/dev/login/{characterId}`, which only works with
+`EVE_ALLOW_DEV_LOGIN=true` in the environment and an already-synced character. Never
+enable it on a publicly reachable host.
+
+On WSL2, if npm/npx hangs on downloads: `NODE_OPTIONS=--dns-result-order=ipv4first`.
+
+## Notes
+
+- Single-user by design: anyone who can open the app sees every linked character.
+- ESI etiquette is enforced in the client (User-Agent with contact, `X-Compatibility-Date`,
+  ETag/Expires caching, error-limit and token-bucket backoff). Don't strip it.
+- ESI cannot see anomalies/signatures — the farm module works from activity proxies and
+  your own probe-scan journal. That's a game limitation, not a missing feature.
