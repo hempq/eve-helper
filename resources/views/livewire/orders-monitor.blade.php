@@ -31,15 +31,14 @@
                         <td class="r num">{{ $row->bestPrice !== null ? number_format($row->bestPrice, 2) : '—' }}</td>
                         <td class="r num">{{ number_format($row->volumeRemain) }}/{{ number_format($row->volumeTotal) }}</td>
                         <td>
-                            @if ($row->isStructure)
-                                <span class="chip">structure — n/a</span>
-                            @elseif ($row->unknown)
-                                <span class="chip">no competition</span>
+                            @if ($row->unknown)
+                                <span class="chip" title="{{ $row->isStructure ? 'No docking access, or no competing orders' : 'No competing orders here' }}">no competition</span>
                             @elseif ($row->undercut)
                                 <span class="chip down">undercut</span>
                             @else
                                 <span class="chip up">best</span>
                             @endif
+                            @if ($row->isStructure)<span class="muted" style="font-size: 10.5px">citadel</span>@endif
                         </td>
                         <td class="muted" style="font-size: 12.5px">
                             @if ($row->undercut)

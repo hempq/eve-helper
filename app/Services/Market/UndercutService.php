@@ -15,6 +15,9 @@ use Illuminate\Support\Facades\DB;
  */
 class UndercutService
 {
+    /** Cache of fetched structure order books within one check() call. */
+    private array $structureBooks = [];
+
     public function __construct(
         private readonly EsiClientInterface $esi,
         private readonly TradeFeeService $fees,
@@ -35,13 +38,20 @@ class UndercutService
         }
 
         $brokerFee = $this->fees->brokerFeeRate($character);
+        $this->structureBooks = [];
 
         return $orders
             ->map(function ($order) use ($character, $brokerFee) {
                 $isStructure = $order->location_id > 1_000_000_000_000;
 
                 $best = $isStructure
-                    ? null // structure books need a full paginated pull; not yet supported
+                    ? $this->bestStructurePrice(
+                        $character,
+                        (int) $order->location_id,
+                        (int) $order->type_id,
+                        (bool) $order->is_buy_order,
+                        (int) $order->order_id,
+                    )
                     : $this->bestCompetingPrice(
                         (int) $order->region_id,
                         (int) $order->type_id,
@@ -112,9 +122,45 @@ class UndercutService
         return $isBuy ? (float) $prices->max() : (float) $prices->min();
     }
 
+    /**
+     * Best competing price in an Upwell structure. The structure market
+     * endpoint isn't filterable by type, so the whole (paginated) book is
+     * pulled once per structure per check() and reused. Needs docking access
+     * (scope esi-markets.structure_markets.v1); on failure returns null.
+     */
+    private function bestStructurePrice(Character $character, int $structureId, int $typeId, bool $isBuy, int $ownOrderId): ?float
+    {
+        if (! array_key_exists($structureId, $this->structureBooks)) {
+            try {
+                $this->structureBooks[$structureId] = $this->esi->getAllPages(
+                    "/markets/structures/{$structureId}", [], $character,
+                );
+            } catch (EsiErrorLimited|EsiRequestFailed) {
+                $this->structureBooks[$structureId] = null;
+            }
+        }
+
+        $book = $this->structureBooks[$structureId];
+        if ($book === null) {
+            return null;
+        }
+
+        $prices = collect($book)
+            ->filter(fn (array $o) => (int) $o['type_id'] === $typeId
+                && (bool) ($o['is_buy_order'] ?? false) === $isBuy
+                && (int) $o['order_id'] !== $ownOrderId)
+            ->pluck('price');
+
+        if ($prices->isEmpty()) {
+            return null;
+        }
+
+        return $isBuy ? (float) $prices->max() : (float) $prices->min();
+    }
+
     private function locationName(int $locationId): string
     {
         return DB::table('stations')->where('station_id', $locationId)->value('name')
-            ?? "Location #{$locationId}";
+            ?? "Structure #{$locationId}";
     }
 }

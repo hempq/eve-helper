@@ -96,6 +96,31 @@ class UndercutServiceTest extends TestCase
         Http::assertSent(fn ($request) => str_contains($request->url(), 'order_type=buy'));
     }
 
+    public function test_structure_order_undercut_via_structure_book(): void
+    {
+        // Order in an Upwell structure (location id above the structure floor).
+        DB::table('character_orders')->insert([
+            'order_id' => 500, 'character_id' => $this->character->character_id,
+            'type_id' => 34, 'location_id' => 1_035_000_000_001, 'region_id' => 10000002,
+            'is_buy_order' => false, 'price' => 6.0,
+            'volume_remain' => 100, 'volume_total' => 100, 'issued' => now(),
+        ]);
+
+        Http::fake([
+            'esi.evetech.net/markets/structures/1035000000001*' => Http::response([
+                ['order_id' => 500, 'type_id' => 34, 'is_buy_order' => false, 'price' => 6.0],  // own
+                ['order_id' => 600, 'type_id' => 34, 'is_buy_order' => false, 'price' => 5.4],  // undercutter
+                ['order_id' => 700, 'type_id' => 34, 'is_buy_order' => true, 'price' => 4.0],   // buy side, ignore
+            ], 200, ['X-Pages' => '1', 'Expires' => now()->addMinutes(5)->toRfc7231String()]),
+        ]);
+
+        $row = $this->app->make(UndercutService::class)->check($this->character)->firstWhere('orderId', 500);
+
+        $this->assertTrue($row->isStructure);
+        $this->assertTrue($row->undercut);
+        $this->assertSame(5.4, $row->bestPrice);
+    }
+
     public function test_no_orders_returns_empty(): void
     {
         $this->assertTrue($this->app->make(UndercutService::class)->check($this->character)->isEmpty());
