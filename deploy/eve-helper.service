@@ -7,10 +7,9 @@ Wants=network-online.target
 [Service]
 Type=oneshot
 RemainAfterExit=yes
-User=hempq
-Group=hempq
-WorkingDirectory=/home/hempq/apps/eve-helper/deploy
-# Independent of DDEV: `ddev poweroff` never touches this compose project.
+# Runs as root so it can (re)add the hostname on every boot — WSL regenerates
+# /etc/hosts on start when generateHosts is on. Docker runs fine as root.
+ExecStartPre=/bin/sh -c "grep -q eve-helper.local /etc/hosts || echo '127.0.0.2  eve-helper.local' >> /etc/hosts"
 ExecStart=/usr/bin/docker compose -f /home/hempq/apps/eve-helper/deploy/docker-compose.yml up -d
 ExecStop=/usr/bin/docker compose -f /home/hempq/apps/eve-helper/deploy/docker-compose.yml stop
 TimeoutStartSec=300
