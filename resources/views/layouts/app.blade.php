@@ -40,6 +40,18 @@
         .char-item { display: block; width: 100%; text-align: left; background: none; border: 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 50%, transparent); color: var(--ink); padding: 8px 12px; font: 500 13px var(--font-body); cursor: pointer; text-decoration: none; }
         .char-item:hover { background: var(--accent-dim); color: var(--accent); text-decoration: none; }
         .char-item.add { color: var(--accent); }
+        .alert-bell { position: relative; }
+        .bell-btn { background: none; border: 0; cursor: pointer; font-size: 16px; position: relative; padding: 2px 4px; }
+        .bell-badge { position: absolute; top: -4px; right: -6px; background: var(--bad); color: #fff; border-radius: 999px; font: 700 10px var(--font-body); padding: 1px 5px; }
+        .bell-panel { position: absolute; right: 0; top: calc(100% + 8px); width: 320px; background: var(--surface2); border: 1px solid var(--line); border-radius: 8px; z-index: 70; overflow: hidden; box-shadow: 0 12px 30px rgba(0,0,0,.5); }
+        .bell-head { display: flex; justify-content: space-between; align-items: center; padding: 10px 12px; border-bottom: 1px solid var(--line); font: 600 12px var(--font-display); letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+        .bell-clear { background: none; border: 0; color: var(--accent); cursor: pointer; font: 500 11px var(--font-body); text-transform: none; letter-spacing: 0; }
+        .bell-item { display: flex; gap: 8px; align-items: flex-start; padding: 10px 12px; border-bottom: 1px solid color-mix(in srgb, var(--line) 50%, transparent); color: var(--ink); text-decoration: none; font-size: 13px; }
+        .bell-item:hover { background: color-mix(in srgb, var(--accent-dim) 50%, transparent); text-decoration: none; }
+        .bell-item.read { opacity: .5; }
+        .bell-dot { width: 8px; height: 8px; border-radius: 999px; margin-top: 5px; flex: none; }
+        .bell-urgent { background: var(--bad); } .bell-warn { background: var(--gold); } .bell-info { background: var(--accent); }
+        .bell-empty { padding: 16px 12px; color: var(--muted); font-size: 13px; text-align: center; }
 
         main { max-width: 1100px; margin: 0 auto; padding: 24px 20px 60px; }
         h1 { font: 600 24px/1.3 var(--font-display); margin: 0 0 4px; }
@@ -112,6 +124,7 @@
                 <a href="{{ route('settings') }}" @class(['active' => request()->routeIs('settings')])>Settings</a>
             </nav>
             <div class="char-chip">
+                <livewire:alert-bell :character="$character" />
                 <livewire:safety-setting :character="$character" />
                 @php $allChars = \App\Models\Character::orderBy('name')->get(['character_id', 'name']); @endphp
                 <details class="char-menu">
