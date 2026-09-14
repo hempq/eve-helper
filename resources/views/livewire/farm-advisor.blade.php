@@ -45,7 +45,7 @@
                 </select>
             </label>
             <label class="muted" style="display:flex; gap:6px; align-items:center; font-size:13px;">tour size
-                <input type="number" wire:model.live.debounce.400ms="tourSize" min="3" max="25"
+                <input type="number" wire:model.live.debounce.400ms="tourSize" min="3" max="40"
                        style="width: 64px; background: var(--surface2); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); padding: 6px 8px; font: inherit;"> systems
             </label>
             <span wire:loading class="muted">Scoring region…</span>

@@ -4,7 +4,6 @@ namespace App\Services\Farm;
 
 use App\Models\Character;
 use App\Services\Universe\RouteService;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
@@ -34,7 +33,7 @@ class TargetScorerService
 
     /**
      * @param  'highsec'|'lowsec'|'nullsec'|'any'  $securityBand
-     * @return Collection<int, object> scored systems in the region, best first
+     * @return ScoredSystems scored systems in the region, best first
      */
     public function scoreRegion(
         int $regionId,
@@ -43,14 +42,14 @@ class TargetScorerService
         ?string $faction = null,
         string $securityBand = 'any',
         ?int $originSystemId = null,
-    ): Collection {
+    ): ScoredSystems {
         $systems = DB::table('solar_systems as s')
             ->join('constellations as c', 'c.constellation_id', '=', 's.constellation_id')
             ->where('s.region_id', $regionId)
             ->get(['s.system_id', 's.name', 's.security', 's.constellation_id', 'c.name as constellation']);
 
         if ($systems->isEmpty()) {
-            return collect();
+            return ScoredSystems::make();
         }
 
         // Prefer averaged history; fall back to the live snapshot when the
@@ -183,7 +182,8 @@ class TargetScorerService
             })
             ->sortByDesc('score')
             ->values()
-            ->tap(fn ($c) => $c->usingHistory = $usingHistory);
+            ->pipe(fn ($c) => ScoredSystems::make($c->all()))
+            ->tap(fn (ScoredSystems $c) => $c->usingHistory = $usingHistory);
     }
 
     /**

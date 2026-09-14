@@ -72,12 +72,12 @@ class SystemTourService
             }
 
             $order = $this->localSearch($order, $originSystemId, $distance);
+            $order = $this->improveSelection($order, $candidates, $originSystemId, $distance, $count);
 
             // Maximize collected score minus a jump cost, so distance shapes
             // WHICH systems are chosen (a far high-score dead-end is worth a
             // detour; a far marginal one is not), not just their order.
-            $value = array_sum(array_map(fn (int $id) => $candidates[$id], $order))
-                - self::JUMP_PENALTY * $this->routeLength($order, $originSystemId, $distance);
+            $value = $this->tourValue($order, $candidates, $originSystemId, $distance);
 
             if ($value > $bestValue) {
                 $bestValue = $value;
@@ -249,6 +249,100 @@ class SystemTourService
         }
 
         return $order;
+    }
+
+    /**
+     * Selection-improving search: the greedy construction hugs the origin, so
+     * a distant high-score system may never enter any restart's tour. Here
+     * unused candidates are inserted (when below the stop budget) or swapped
+     * against current stops whenever that raises collected score minus jump
+     * cost, re-running 2-opt after each accepted move.
+     *
+     * @param  list<int>  $order
+     * @param  array<int, float>  $candidates
+     * @param  array<int, array<int, int>>  $distance
+     * @return list<int>
+     */
+    private function improveSelection(array $order, array $candidates, int $origin, array $distance, int $count): array
+    {
+        $improved = true;
+
+        while ($improved) {
+            $improved = false;
+            $inTour = array_flip($order);
+            $bestOrder = null;
+            $bestValue = $this->tourValue($order, $candidates, $origin, $distance);
+
+            foreach ($candidates as $id => $score) {
+                $id = (int) $id;
+
+                if (isset($inTour[$id])) {
+                    continue;
+                }
+
+                // Plain insertion while below the stop budget.
+                if (count($order) < $count) {
+                    $candidate = $this->withInserted($order, $id, $origin, $distance);
+                    $value = $candidate !== null ? $this->tourValue($candidate, $candidates, $origin, $distance) : -INF;
+
+                    if ($value > $bestValue) {
+                        $bestValue = $value;
+                        $bestOrder = $candidate;
+                    }
+                }
+
+                // Swap against each current stop.
+                foreach (array_keys($order) as $i) {
+                    $without = $order;
+                    array_splice($without, $i, 1);
+
+                    $candidate = $this->withInserted($without, $id, $origin, $distance);
+                    $value = $candidate !== null ? $this->tourValue($candidate, $candidates, $origin, $distance) : -INF;
+
+                    if ($value > $bestValue) {
+                        $bestValue = $value;
+                        $bestOrder = $candidate;
+                    }
+                }
+            }
+
+            if ($bestOrder !== null) {
+                $order = $this->twoOpt($bestOrder, $origin, $distance);
+                $improved = true;
+            }
+        }
+
+        return $order;
+    }
+
+    /**
+     * @param  list<int>  $order
+     * @param  array<int, array<int, int>>  $distance
+     * @return ?list<int> the order with $id at its cheapest position, or null
+     *   when $id is unreachable
+     */
+    private function withInserted(array $order, int $id, int $origin, array $distance): ?array
+    {
+        [$cost, $pos] = $this->cheapestInsertion($order, $id, $origin, $distance);
+
+        if ($cost === null) {
+            return null;
+        }
+
+        array_splice($order, $pos, 0, [$id]);
+
+        return $order;
+    }
+
+    /**
+     * @param  list<int>  $order
+     * @param  array<int, float>  $candidates
+     * @param  array<int, array<int, int>>  $distance
+     */
+    private function tourValue(array $order, array $candidates, int $origin, array $distance): float
+    {
+        return array_sum(array_map(fn (int $id) => $candidates[$id], $order))
+            - self::JUMP_PENALTY * $this->routeLength($order, $origin, $distance);
     }
 
     /**

@@ -101,7 +101,7 @@ class FarmAdvisor extends Component
             $this->regionSearch = (string) DB::table('regions')->where('region_id', $originRegionId)->value('name');
         }
 
-        $this->tourSize = max(3, min(25, $this->tourSize));
+        $this->tourSize = max(3, min(40, $this->tourSize));
         $minSecurity = $this->character->minRouteSecurity();
 
         $scored = $this->regionId !== null
@@ -118,7 +118,7 @@ class FarmAdvisor extends Component
         // Feed the tour a wider pool (with scores) than it will pick, so the
         // orienteering can trade a couple of jumps for a high-value dead-end
         // that a strict top-N would have missed.
-        $candidates = $scored->take(max(30, $this->tourSize * 3))
+        $candidates = $scored->take(max(45, $this->tourSize * 3))
             ->mapWithKeys(fn ($s) => [$s->systemId => max(0.1, $s->score)])
             ->all();
 

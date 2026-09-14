@@ -71,6 +71,31 @@ class SystemTourServiceTest extends TestCase
         $this->assertSame(['Alpha'], array_column($tour->systems, 'name'));
     }
 
+    public function test_selection_search_swaps_in_a_distant_high_value_system(): void
+    {
+        // Five near spokes (1 jump, score 3.0, desirability 9) crowd the
+        // greedy restricted candidate list, so no construction ever proposes
+        // Charlie (3 jumps, score 5.1, desirability 8.67) — yet Charlie's
+        // tour value (5.1 - 3) beats a spoke's (3.0 - 1). Only the
+        // selection-improving swap can put it in the tour.
+        $spokes = [];
+        foreach ([21, 22, 23, 24, 25] as $id) {
+            DB::table('solar_systems')->insert([
+                ['system_id' => $id, 'constellation_id' => 1, 'region_id' => 1, 'name' => "Spoke {$id}", 'security' => -0.1],
+            ]);
+            DB::table('system_jumps')->insert([
+                ['from_system_id' => 10, 'to_system_id' => $id],
+                ['from_system_id' => $id, 'to_system_id' => 10],
+            ]);
+            $spokes[$id] = 3.0;
+        }
+
+        $tour = $this->app->make(SystemTourService::class)
+            ->tour(10, [...$spokes, 13 => 5.1], count: 1);
+
+        $this->assertSame(['Charlie'], array_column($tour->systems, 'name'));
+    }
+
     public function test_count_caps_the_number_of_stops(): void
     {
         $tour = $this->app->make(SystemTourService::class)
