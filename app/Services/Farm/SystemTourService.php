@@ -20,6 +20,14 @@ class SystemTourService
         private readonly RouteService $routes,
     ) {}
 
+    private const GRASP_RESTARTS = 60;
+
+    /** Restricted candidate list size for the randomized greedy pick. */
+    private const RCL_SIZE = 4;
+
+    /** Score a jump must earn for a stop to be worth reaching (selection). */
+    private const JUMP_PENALTY = 1.0;
+
     private ?float $minSecurity = null;
 
     /**
@@ -46,44 +54,42 @@ class SystemTourService
         $ids = array_map('intval', array_keys($candidates));
         $distance = $this->distanceMatrix([$originSystemId, ...$ids]);
 
-        // Greedy cheapest-insertion by score-per-marginal-jump.
-        $order = [];
-        $remaining = $candidates;
+        // Orienteering Problem, single pilot. GRASP multi-start: many
+        // randomized greedy constructions (Tsiligirides desirability
+        // score²/Δjumps, restricted candidate list) each polished with 2-opt
+        // + Or-opt; keep the route collecting the most score. Deterministic
+        // seed so the same inputs give the same tour.
+        mt_srand(crc32($originSystemId.':'.implode(',', $ids)));
 
-        while (count($order) < $count && $remaining !== []) {
-            $bestId = null;
-            $bestPos = 0;
-            $bestRatio = -INF;
+        $best = null;
+        $bestValue = -INF;
 
-            foreach ($remaining as $id => $score) {
-                [$cost, $pos] = $this->cheapestInsertion($order, (int) $id, $originSystemId, $distance);
+        for ($restart = 0; $restart < self::GRASP_RESTARTS; $restart++) {
+            $order = $this->construct($candidates, $originSystemId, $distance, $count);
 
-                if ($cost === null) {
-                    continue; // unreachable under the security constraint
-                }
-
-                $ratio = $score / max(1, $cost);
-
-                if ($ratio > $bestRatio) {
-                    $bestRatio = $ratio;
-                    $bestId = (int) $id;
-                    $bestPos = $pos;
-                }
+            if ($order === []) {
+                continue;
             }
 
-            if ($bestId === null) {
-                break;
-            }
+            $order = $this->localSearch($order, $originSystemId, $distance);
 
-            array_splice($order, $bestPos, 0, [$bestId]);
-            unset($remaining[$bestId]);
+            // Maximize collected score minus a jump cost, so distance shapes
+            // WHICH systems are chosen (a far high-score dead-end is worth a
+            // detour; a far marginal one is not), not just their order.
+            $value = array_sum(array_map(fn (int $id) => $candidates[$id], $order))
+                - self::JUMP_PENALTY * $this->routeLength($order, $originSystemId, $distance);
+
+            if ($value > $bestValue) {
+                $bestValue = $value;
+                $best = $order;
+            }
         }
 
-        if ($order === []) {
+        if ($best === null) {
             return null;
         }
 
-        $order = $this->twoOpt($order, $originSystemId, $distance);
+        $order = $best;
         $targetSet = array_flip($order);
 
         [$npcKills, $shipKills, $podKills] = $this->scorer->killActivity();
@@ -162,6 +168,106 @@ class SystemTourService
     }
 
     /**
+     * One randomized greedy construction: repeatedly insert from a restricted
+     * candidate list ranked by Tsiligirides desirability score²/Δjumps.
+     *
+     * @param  array<int, float>  $candidates
+     * @param  array<int, array<int, int>>  $distance
+     * @return list<int>
+     */
+    private function construct(array $candidates, int $origin, array $distance, int $count): array
+    {
+        $order = [];
+        $remaining = $candidates;
+
+        while (count($order) < $count && $remaining !== []) {
+            $ranked = [];
+
+            foreach ($remaining as $id => $score) {
+                [$cost, $pos] = $this->cheapestInsertion($order, (int) $id, $origin, $distance);
+
+                if ($cost === null) {
+                    continue;
+                }
+
+                // Squared score biases toward high-value systems so cheap
+                // low-score pockets don't crowd the route out.
+                $ranked[] = ['id' => (int) $id, 'pos' => $pos, 'desire' => ($score * $score) / max(1, $cost)];
+            }
+
+            if ($ranked === []) {
+                break;
+            }
+
+            usort($ranked, fn ($a, $b) => $b['desire'] <=> $a['desire']);
+            $pick = $ranked[mt_rand(0, min(self::RCL_SIZE, count($ranked)) - 1)];
+
+            array_splice($order, $pick['pos'], 0, [$pick['id']]);
+            unset($remaining[$pick['id']]);
+        }
+
+        return $order;
+    }
+
+    /**
+     * Local search to convergence: 2-opt (reverse a segment) + Or-opt
+     * (relocate a chain of 1-3 systems) on the open path from the origin.
+     *
+     * @param  list<int>  $order
+     * @param  array<int, array<int, int>>  $distance
+     * @return list<int>
+     */
+    private function localSearch(array $order, int $origin, array $distance): array
+    {
+        $order = $this->twoOpt($order, $origin, $distance);
+
+        $improved = true;
+        while ($improved) {
+            $improved = false;
+            $n = count($order);
+            $base = $this->routeLength($order, $origin, $distance);
+
+            for ($len = 1; $len <= 3 && ! $improved; $len++) {
+                for ($i = 0; $i + $len <= $n && ! $improved; $i++) {
+                    $chain = array_slice($order, $i, $len);
+                    $rest = [...array_slice($order, 0, $i), ...array_slice($order, $i + $len)];
+
+                    for ($j = 0; $j <= count($rest); $j++) {
+                        if ($j === $i) {
+                            continue;
+                        }
+                        $candidate = [...array_slice($rest, 0, $j), ...$chain, ...array_slice($rest, $j)];
+
+                        if ($this->routeLength($candidate, $origin, $distance) < $base) {
+                            $order = $this->twoOpt($candidate, $origin, $distance);
+                            $improved = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+
+        return $order;
+    }
+
+    /**
+     * @param  list<int>  $order
+     * @param  array<int, array<int, int>>  $distance
+     */
+    private function routeLength(array $order, int $origin, array $distance): int
+    {
+        $total = 0;
+        $prev = $origin;
+        foreach ($order as $node) {
+            $total += $distance[$prev][$node] ?? 1000;
+            $prev = $node;
+        }
+
+        return $total;
+    }
+
+    /**
      * Cheapest place to insert $id into the open path origin→order, and the
      * marginal jumps it costs. Returns [null, 0] when $id is unreachable.
      *
@@ -215,29 +321,24 @@ class SystemTourService
     }
 
     /**
+     * All-pairs jump distances among the tour nodes. One BFS per node
+     * (distancesFrom) rather than a Dijkstra per pair — an order of magnitude
+     * cheaper for a pool of ~30 candidates.
+     *
      * @param  list<int>  $nodes
      * @return array<int, array<int, int>>
      */
     private function distanceMatrix(array $nodes): array
     {
+        $wanted = array_flip($nodes);
         $matrix = [];
 
         foreach ($nodes as $a) {
-            foreach ($nodes as $b) {
-                if ($a === $b) {
-                    $matrix[$a][$b] = 0;
+            $distances = $this->routes->distancesFrom($a, 100, minSecurity: $this->minSecurity);
 
-                    continue;
-                }
-                if (isset($matrix[$b][$a])) {
-                    $matrix[$a][$b] = $matrix[$b][$a];
-
-                    continue;
-                }
-
-                $jumps = $this->routes->jumps($a, $b, preferSafer: false, minSecurity: $this->minSecurity);
-                if ($jumps !== null) {
-                    $matrix[$a][$b] = $jumps;
+            foreach ($distances as $system => $jumps) {
+                if (isset($wanted[$system])) {
+                    $matrix[$a][$system] = $jumps;
                 }
             }
         }

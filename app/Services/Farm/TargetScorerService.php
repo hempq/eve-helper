@@ -80,8 +80,10 @@ class TargetScorerService
         // Constellation-averaged NPC kills (spawn evidence), over every member.
         $constNpc = $this->constellationNpcAverage($regionId, $npcAvg);
 
-        // Personal per-constellation logged-site counts (30 days).
+        // Personal per-constellation logged-site counts (30 days) and the
+        // ones cleared in the last 24h (which deplete the pocket).
         $mySites = $character !== null ? $this->ownSites($character) : [];
+        $recentlyCleared = $character !== null ? $this->recentlyCleared($character) : [];
 
         // Distances from the pilot for the small logistics term.
         $distances = $originSystemId !== null
@@ -109,7 +111,7 @@ class TargetScorerService
             })
             ->map(function ($system) use (
                 $npcAvg, $playersAvg, $jumpsAvg, $liveShipKills, $livePodKills,
-                $gateCounts, $constNpc, $mySites, $distances
+                $gateCounts, $constNpc, $mySites, $recentlyCleared, $distances
             ) {
                 $id = (int) $system->system_id;
                 $constellationId = (int) $system->constellation_id;
@@ -129,7 +131,11 @@ class TargetScorerService
                 // "someone is farming here" signal.
                 [$wNpc, $wJumps] = $isHighsec ? [3.0, 6.0] : [8.0, 3.0];
 
-                $supply = 10 * log1p($constNpcHere) + 3 * log1p($ownSites);
+                // Own-journal ground truth, decayed: sites you logged in the
+                // constellation help, but ones you recently cleared deplete it.
+                $ownBonus = 3 * log1p($ownSites) - 2 * log1p($recentlyCleared[$constellationId] ?? 0);
+
+                $supply = 10 * log1p($constNpcHere) + $ownBonus;
                 $vacancy = -$wNpc * log1p($sysNpc) - $wJumps * log1p($traffic);
 
                 // Dead-end pockets are where unscanned combat anomalies pile
@@ -142,10 +148,20 @@ class TargetScorerService
                     default => 0,
                 } * exp(-$sysNpc / 3);
 
-                $danger = -6 * $liveDanger;
+                // Truesec: in null, more-negative security means more and
+                // richer anomalies (sov Pirate Detection upgrades). Weighted
+                // modestly since a high NPC baseline already proxies richness.
+                $trueSec = ! $isHighsec ? 6 * max(0, -$security) : 0.0;
+
                 $logistics = $distance !== null ? -0.5 * $distance : -20;
 
-                $score = $supply + $vacancy + $danger + $logistics;
+                $score = $supply + $vacancy + $trueSec + $logistics;
+
+                // Danger is a tripwire, not a tax: any live PvP kill right now
+                // vetoes the system below every safe one.
+                if ($liveDanger > 0) {
+                    $score = min($score, 0) - 10 * $liveDanger;
+                }
 
                 return (object) [
                     'systemId' => $id,
@@ -204,6 +220,24 @@ class TargetScorerService
             ->selectRaw('ss.constellation_id, COUNT(*) as sites')
             ->groupBy('ss.constellation_id')
             ->pluck('sites', 'constellation_id')
+            ->map(fn ($v) => (int) $v)
+            ->all();
+    }
+
+    /**
+     * @return array<int, int> constellation id => sites the pilot cleared in
+     *   the last 24h (the pocket is depleted until they respawn)
+     */
+    private function recentlyCleared(Character $character): array
+    {
+        return DB::table('signatures as sig')
+            ->join('solar_systems as ss', 'ss.system_id', '=', 'sig.system_id')
+            ->where('sig.character_id', $character->character_id)
+            ->where('sig.status', 'done')
+            ->where('sig.completed_at', '>=', now()->subDay())
+            ->selectRaw('ss.constellation_id, COUNT(*) as cleared')
+            ->groupBy('ss.constellation_id')
+            ->pluck('cleared', 'constellation_id')
             ->map(fn ($v) => (int) $v)
             ->all();
     }

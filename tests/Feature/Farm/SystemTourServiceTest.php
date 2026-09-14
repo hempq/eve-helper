@@ -64,9 +64,10 @@ class SystemTourServiceTest extends TestCase
 
         $this->assertSame(['Charlie'], array_column($tour->systems, 'name'));
 
-        // Flip it: a cheap nearby system with a modest score beats a far one.
+        // Flip it: a cheap nearby system beats a far one of similar score
+        // (its extra 2 detour jumps cost more than the 1-point score edge).
         $tour = $this->app->make(SystemTourService::class)
-            ->tour(10, [11 => 10.0, 13 => 12.0], count: 1);
+            ->tour(10, [11 => 10.0, 13 => 11.0], count: 1);
         $this->assertSame(['Alpha'], array_column($tour->systems, 'name'));
     }
 
