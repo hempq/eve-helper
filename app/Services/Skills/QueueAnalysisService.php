@@ -11,7 +11,10 @@ use Illuminate\Support\Facades\DB;
  */
 class QueueAnalysisService
 {
-    public function __construct(private readonly RemapOptimizer $optimizer) {}
+    public function __construct(
+        private readonly RemapOptimizer $optimizer,
+        private readonly MultiRemapPlanner $multiRemap,
+    ) {}
 
     /**
      * Returns null when the queue holds no optimizable SP (empty queue or
@@ -56,6 +59,54 @@ class QueueAnalysisService
         }
 
         return $this->reportFromBuckets($character, $buckets, $rows->count());
+    }
+
+    /**
+     * Multi-remap segmentation of the live queue, in training order. Null
+     * when one remap covers the queue (short queue or one dominant primary).
+     */
+    public function multiRemapPlan(Character $character): ?MultiRemapPlan
+    {
+        $steps = $this->orderedQueueSteps($character);
+
+        return $steps === []
+            ? null
+            : $this->multiRemap->plan($steps, $this->implantBonuses($character));
+    }
+
+    /**
+     * @return list<object{primaryAttribute: string, secondaryAttribute: string, sp: int}>
+     */
+    private function orderedQueueSteps(Character $character): array
+    {
+        $rows = DB::table('character_skill_queue as q')
+            ->join('skill_types as s', 's.type_id', '=', 'q.skill_id')
+            ->where('q.character_id', $character->character_id)
+            ->whereNotNull('q.level_end_sp')
+            ->orderBy('q.position')
+            ->select('q.position', 'q.level_start_sp', 'q.level_end_sp', 'q.training_start_sp',
+                's.primary_attribute', 's.secondary_attribute')
+            ->get();
+
+        $steps = [];
+
+        foreach ($rows as $row) {
+            $startSp = (int) $row->position === 0 && $row->training_start_sp !== null
+                ? max((int) $row->training_start_sp, (int) $row->level_start_sp)
+                : (int) $row->level_start_sp;
+
+            $sp = (int) $row->level_end_sp - $startSp;
+
+            if ($sp > 0) {
+                $steps[] = (object) [
+                    'primaryAttribute' => $row->primary_attribute,
+                    'secondaryAttribute' => $row->secondary_attribute,
+                    'sp' => $sp,
+                ];
+            }
+        }
+
+        return $steps;
     }
 
     /**

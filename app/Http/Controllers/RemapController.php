@@ -23,6 +23,7 @@ class RemapController extends Controller
         return view('remap', [
             'character' => $character,
             'report' => $analysis->remapReport($character),
+            'multi' => $analysis->multiRemapPlan($character),
         ]);
     }
 }

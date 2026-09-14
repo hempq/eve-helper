@@ -96,5 +96,43 @@
                 </p>
             </div>
         </div>
+
+        @if ($multi !== null && $multi->savedMinutes() >= 1440)
+            <div class="card wide" style="margin-top: 24px">
+                <h2>Multi-remap plan
+                    <span class="muted" style="text-transform:none; letter-spacing:0">
+                        — {{ $multi->remapCount() }} remaps save {{ \App\Support\Duration::minutes($multi->savedMinutes()) }}
+                        vs the single remap above
+                    </span>
+                </h2>
+                <div class="tablewrap">
+                    <table>
+                        <tr>
+                            <th>#</th><th>Starts</th><th>Dominant</th><th class="r">SP</th><th class="r">Duration</th>
+                            <th class="r">Per</th><th class="r">Wil</th><th class="r">Int</th><th class="r">Mem</th><th class="r">Cha</th>
+                        </tr>
+                        @foreach ($multi->segments as $i => $segment)
+                            <tr>
+                                <td class="num muted">{{ $i + 1 }}</td>
+                                <td class="num">{{ $i === 0 ? 'now' : 'day '.round($segment->startMinutes / 1440) }}</td>
+                                <td style="text-transform: capitalize">{{ $segment->dominantPrimary }}</td>
+                                <td class="r num">{{ number_format($segment->sp) }}</td>
+                                <td class="r num">{{ \App\Support\Duration::minutes($segment->minutes) }}</td>
+                                <td class="r num"><b>{{ $segment->base->perception }}</b></td>
+                                <td class="r num"><b>{{ $segment->base->willpower }}</b></td>
+                                <td class="r num"><b>{{ $segment->base->intelligence }}</b></td>
+                                <td class="r num"><b>{{ $segment->base->memory }}</b></td>
+                                <td class="r num"><b>{{ $segment->base->charisma }}</b></td>
+                            </tr>
+                        @endforeach
+                    </table>
+                </div>
+                <p class="muted" style="margin-bottom:0; font-size:12.5px">
+                    Each segment start is one remap (base attributes shown, implants come on top). Remaps are yearly + banked
+                    bonus remaps — you have {{ $report->bonusRemaps }} bonus remap{{ $report->bonusRemaps === 1 ? '' : 's' }},
+                    so check the segment dates fit your remap budget before committing.
+                </p>
+            </div>
+        @endif
     @endif
 @endsection
