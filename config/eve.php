@@ -43,6 +43,11 @@ return [
             // Player structure names for asset locations (takes effect after
             // the next EVE login).
             'esi-universe.read_structures.v1',
+            // Added 2026-09-15 — need a re-login to grant: contract tracking,
+            // LP-store valuation, killmail loss analysis.
+            'esi-contracts.read_character_contracts.v1',
+            'esi-characters.read_loyalty.v1',
+            'esi-killmails.read_killmails.v1',
         ],
     ],
 

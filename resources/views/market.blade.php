@@ -10,6 +10,8 @@
 
     <livewire:orders-monitor :character="$character" />
 
+    <livewire:contracts-card :character="$character" />
+
     <div style="margin-top: 24px">
         <livewire:market-appraisal :character="$character" />
     </div>

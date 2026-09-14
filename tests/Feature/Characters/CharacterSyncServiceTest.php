@@ -81,6 +81,15 @@ class CharacterSyncServiceTest extends TestCase
             ]);
 
         $esi->shouldReceive('getAllPages')
+            ->with("/characters/{$id}/contracts", [], $character)
+            ->andReturn([
+                ['contract_id' => 88001, 'type' => 'item_exchange', 'status' => 'outstanding',
+                    'title' => 'Gistii B-Type', 'price' => 250_000_000, 'reward' => 0, 'collateral' => 0,
+                    'for_corporation' => false, 'date_issued' => '2026-09-13T10:00:00Z',
+                    'date_expired' => '2026-09-27T10:00:00Z'],
+            ]);
+
+        $esi->shouldReceive('getAllPages')
             ->with("/characters/{$id}/assets", [], $character)
             ->andReturn([
                 ['item_id' => 9001, 'type_id' => 587, 'quantity' => 1, 'location_id' => 60003760,
@@ -159,6 +168,10 @@ class CharacterSyncServiceTest extends TestCase
         $order = DB::table('character_orders')->where('order_id', 7001)->first();
         $this->assertSame(34, (int) $order->type_id);
         $this->assertEqualsWithDelta(5.5, (float) $order->price, 0.001);
+
+        $contract = DB::table('character_contracts')->where('contract_id', 88001)->first();
+        $this->assertSame('outstanding', $contract->status);
+        $this->assertEqualsWithDelta(250_000_000, (float) $contract->price, 0.01);
     }
 
     public function test_queue_is_replaced_not_appended_on_resync(): void

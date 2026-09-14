@@ -33,6 +33,7 @@ class CharacterSyncService
         $this->syncWalletJournal($character);
         $this->syncAssets($character);
         $this->syncOrders($character);
+        $this->syncContracts($character);
 
         $character->forceFill(['last_synced_at' => CarbonImmutable::now()])->save();
     }
@@ -132,6 +133,37 @@ class CharacterSyncService
                 DB::table('character_assets')->insert($chunk);
             }
         });
+    }
+
+    private function syncContracts(Character $character): void
+    {
+        // Requires esi-contracts.read_character_contracts.v1 — a re-login may
+        // be needed to grant it; degrade quietly until then.
+        try {
+            $contracts = $this->esi->getAllPages("/characters/{$character->character_id}/contracts", [], $character);
+        } catch (\App\Services\Esi\Exceptions\EsiRequestFailed) {
+            return;
+        }
+
+        $rows = array_map(fn (array $c) => [
+            'contract_id' => $c['contract_id'],
+            'character_id' => $character->character_id,
+            'type' => $c['type'],
+            'status' => $c['status'],
+            'title' => $c['title'] ?? null,
+            'price' => $c['price'] ?? 0,
+            'reward' => $c['reward'] ?? 0,
+            'collateral' => $c['collateral'] ?? 0,
+            'volume' => $c['volume'] ?? null,
+            'for_corporation' => $c['for_corporation'] ?? false,
+            'date_issued' => isset($c['date_issued']) ? CarbonImmutable::parse($c['date_issued']) : null,
+            'date_expired' => isset($c['date_expired']) ? CarbonImmutable::parse($c['date_expired']) : null,
+            'date_completed' => isset($c['date_completed']) ? CarbonImmutable::parse($c['date_completed']) : null,
+        ], $contracts);
+
+        foreach (array_chunk($rows, 500) as $chunk) {
+            DB::table('character_contracts')->upsert($chunk, 'contract_id');
+        }
     }
 
     private function syncOrders(Character $character): void
