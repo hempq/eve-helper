@@ -13,7 +13,8 @@ class ActivityRecorder
 {
     private const BASELINE_HOURS = 168;
 
-    private const RECENT_HOURS = 12;
+    // Anomalies respawn in minutes, so "recent" means the last few hours.
+    private const RECENT_HOURS = 6;
 
     /** ~5 days of hourly snapshots. */
     private const MIN_BASELINE_SNAPSHOTS = 120;
@@ -60,8 +61,48 @@ class ActivityRecorder
     }
 
     /**
+     * Exponentially-weighted recent NPC activity (half-life ~2h). Combat
+     * anomalies respawn within minutes (constellation-wide batch respawn),
+     * so whether a pocket has sites RIGHT NOW only depends on the last
+     * couple of hours — a system farmed out yesterday is long since full
+     * again. Systems absent from a snapshot count as zero for that hour.
+     *
+     * @return array{npc: array<int, float>, snapshots: int}
+     */
+    public function recentEwma(int $windowHours = 12, float $halfLifeHours = 2.0): array
+    {
+        $since = now()->subHours($windowHours);
+
+        $rows = DB::table('system_activity')
+            ->where('recorded_at', '>=', $since)
+            ->get(['system_id', 'npc_kills', 'recorded_at']);
+
+        if ($rows->isEmpty()) {
+            return ['npc' => [], 'snapshots' => 0];
+        }
+
+        $weights = [];
+        foreach ($rows->pluck('recorded_at')->unique() as $at) {
+            $ageHours = CarbonImmutable::parse($at)->diffInMinutes(now(), true) / 60;
+            $weights[$at] = 0.5 ** ($ageHours / $halfLifeHours);
+        }
+        $totalWeight = array_sum($weights);
+
+        $npc = [];
+        foreach ($rows as $row) {
+            $id = (int) $row->system_id;
+            $npc[$id] = ($npc[$id] ?? 0.0) + $row->npc_kills * $weights[$row->recorded_at];
+        }
+
+        return [
+            'npc' => array_map(fn (float $sum) => $sum / $totalWeight, $npc),
+            'snapshots' => count($weights),
+        ];
+    }
+
+    /**
      * Backlog/surge trends: the week-long NPC-kill baseline versus the last
-     * ~12 hours, with the recent window normalized by the global activity
+     * ~6 hours, with the recent window normalized by the global activity
      * level (the hour-of-day player wave lifts and drops every system
      * together, so the global ratio is the diurnal correction). A system far
      * below its own baseline right now has anomalies piling up (backlog); one

@@ -84,6 +84,31 @@ class TargetScorerServiceTest extends TestCase
         $this->assertGreaterThan($scored[3]->score, $scored[2]->score);
     }
 
+    public function test_quiet_now_outranks_farmed_right_now_at_equal_weekly_average(): void
+    {
+        // Same weekly ratting volume (24 busy hours each), but Quiet (2) did
+        // its farming two days ago — its fast-respawning pocket is full
+        // again — while Camped (3) is being farmed in the last few hours.
+        $rows = [];
+        for ($age = 167; $age >= 0; $age--) {
+            $at = now()->subHours($age)->startOfHour();
+            $quietBusy = $age >= 36 && $age < 60;
+            $campedBusy = $age < 24;
+            $rows[] = ['system_id' => 2, 'npc_kills' => $quietBusy ? 100 : 0, 'ship_kills' => 0, 'pod_kills' => 0, 'ship_jumps' => 0, 'recorded_at' => $at];
+            $rows[] = ['system_id' => 3, 'npc_kills' => $campedBusy ? 100 : 0, 'ship_kills' => 0, 'pod_kills' => 0, 'ship_jumps' => 0, 'recorded_at' => $at];
+            $rows[] = ['system_id' => 99, 'npc_kills' => 1000, 'ship_kills' => 0, 'pod_kills' => 0, 'ship_jumps' => 0, 'recorded_at' => $at];
+        }
+        foreach (array_chunk($rows, 500) as $chunk) {
+            DB::table('system_activity')->insert($chunk);
+        }
+
+        $scored = $this->scorer()->scoreRegion(1)->keyBy('systemId');
+
+        $this->assertLessThan(1.0, $scored[2]->npcKillsNow);
+        $this->assertGreaterThan(50.0, $scored[3]->npcKillsNow);
+        $this->assertGreaterThan($scored[3]->score, $scored[2]->score);
+    }
+
     public function test_trend_stays_null_without_a_week_of_history(): void
     {
         DB::table('system_activity')->insert([

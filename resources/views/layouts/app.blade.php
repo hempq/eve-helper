@@ -165,5 +165,64 @@
     @endif
     EVE Helper — data from ESI &amp; SDE. Fly safe o7
 </footer>
+
+<script>
+// Client-side column sorting for tables marked .sortable. Click a header to
+// sort, click again to flip. Survives Livewire DOM morphs via delegation
+// (the sort state itself resets on a re-render, which is fine).
+(function () {
+    const CELL = (row, i) => row.children[i]?.textContent.trim() ?? '';
+
+    // "1,234.5" -> 1234.5 · "12.3M" -> 12300000 · "85%" -> 85 · "—" -> null
+    function numeric(text) {
+        if (text === '' || text === '—' || text === '-') return null;
+        const m = text.replaceAll(',', '').match(/-?\d+(?:\.\d+)?/);
+        if (!m) return null;
+        let value = parseFloat(m[0]);
+        const suffix = text.charAt(m.index + m[0].length).toUpperCase();
+        if (suffix === 'K') value *= 1e3;
+        if (suffix === 'M') value *= 1e6;
+        if (suffix === 'B') value *= 1e9;
+        return value;
+    }
+
+    document.addEventListener('click', (event) => {
+        const th = event.target.closest('table.sortable th');
+        if (!th || th.dataset.nosort !== undefined || th.textContent.trim() === '') return;
+
+        const table = th.closest('table');
+        const headerRow = th.parentElement;
+        const index = [...headerRow.children].indexOf(th);
+        const rows = [...table.querySelectorAll('tr')].filter((r) => r !== headerRow && r.querySelector('td'));
+        if (rows.length < 2) return;
+
+        const dir = th.dataset.sorted === 'asc' ? 'desc' : (th.dataset.sorted === 'desc' ? 'asc'
+            : (numeric(CELL(rows[0], index)) !== null ? 'desc' : 'asc')); // numbers: biggest first
+        headerRow.querySelectorAll('th').forEach((h) => { delete h.dataset.sorted; });
+        th.dataset.sorted = dir;
+
+        const sign = dir === 'asc' ? 1 : -1;
+        rows.sort((a, b) => {
+            const ta = CELL(a, index); const tb = CELL(b, index);
+            const na = numeric(ta); const nb = numeric(tb);
+            if (na !== null || nb !== null) {
+                if (na === null) return 1; // "—" always sinks to the bottom
+                if (nb === null) return -1;
+                return sign * (na - nb);
+            }
+            return sign * ta.localeCompare(tb);
+        });
+
+        const parent = rows[0].parentElement;
+        rows.forEach((row) => parent.appendChild(row));
+    });
+})();
+</script>
+<style>
+    table.sortable th { cursor: pointer; user-select: none; white-space: nowrap; }
+    table.sortable th:hover { color: var(--ink); }
+    table.sortable th[data-sorted="asc"]::after { content: ' ▲'; color: var(--accent); font-size: 9px; }
+    table.sortable th[data-sorted="desc"]::after { content: ' ▼'; color: var(--accent); font-size: 9px; }
+</style>
 </body>
 </html>

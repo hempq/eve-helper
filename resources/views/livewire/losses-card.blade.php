@@ -14,7 +14,7 @@
         <p class="muted" style="margin: 0">No recorded losses on zKillboard. Fly safe o7</p>
     @else
         <div class="tablewrap">
-            <table>
+            <table class="sortable">
                 <tr><th>When</th><th>Ship</th><th>System</th><th class="r">Lost</th><th class="r">Dropped</th><th></th></tr>
                 @foreach ($summary->losses as $loss)
                     <tr>

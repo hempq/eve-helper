@@ -80,7 +80,7 @@
 
             <div class="card">
                 <h2>Queue composition by attribute pair</h2>
-                <table>
+                <table class="sortable">
                     <tr><th>Primary / Secondary</th><th class="r">SP</th><th class="r">Share</th></tr>
                     @foreach (collect($report->buckets)->sortByDesc('sp') as $bucket)
                         <tr>

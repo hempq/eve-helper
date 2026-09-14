@@ -29,7 +29,7 @@
 
         @if ($stats->isNotEmpty())
             <h2 style="margin-top: 18px">What spawns for you <span class="muted">(30 days)</span></h2>
-            <table>
+            <table class="sortable">
                 <tr><th>Constellation</th><th class="r">Sites</th><th class="r">Combat</th><th class="r">Done</th></tr>
                 @foreach ($stats as $stat)
                     <tr>
@@ -50,7 +50,7 @@
             <p class="muted" style="margin: 0">Nothing logged yet — paste a probe scan or add an escalation.</p>
         @else
             <div class="tablewrap">
-                <table>
+                <table class="sortable">
                     <tr><th>ID</th><th>System</th><th>Type</th><th>Name</th><th class="r">Scan</th><th class="r">Expires</th><th></th></tr>
                     @foreach ($active as $sig)
                         <tr>

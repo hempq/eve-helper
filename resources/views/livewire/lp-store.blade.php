@@ -7,7 +7,7 @@
         <p class="muted" style="margin:0">No profitable LP offers found (or you have no loyalty points).</p>
     @else
         <div class="tablewrap">
-            <table>
+            <table class="sortable">
                 <tr>
                     <th>Item</th><th>Corp</th>
                     <th class="r">LP</th><th class="r">ISK cost</th>

@@ -129,7 +129,7 @@
                 @endif
 
                 <div class="tablewrap">
-                    <table>
+                    <table class="sortable">
                         <tr><th>Item</th><th class="r">Qty</th><th class="r">Net here</th></tr>
                         @foreach (array_slice($stop->items, 0, 12) as $item)
                             <tr>

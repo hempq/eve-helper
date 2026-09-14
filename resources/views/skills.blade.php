@@ -20,7 +20,7 @@
                 </span>
             </h2>
             <div class="tablewrap">
-                <table>
+                <table class="sortable">
                     <tr>
                         <th>Skill</th><th>Level</th><th class="r">Skillpoints</th>
                         <th>Attributes</th><th class="r">Rank</th>

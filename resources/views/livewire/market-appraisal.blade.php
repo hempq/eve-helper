@@ -60,7 +60,7 @@ Gistii B-Type Small Shield Booster"
         <div class="card wide">
             <h2>Items @ {{ $hubs[$result->stationId]['system'] ?? $result->stationId }}</h2>
             <div class="tablewrap">
-                <table>
+                <table class="sortable">
                     <tr>
                         <th>Item</th><th class="r">Qty</th>
                         <th class="r">Buy (5%)</th><th class="r">Sell (5%)</th>

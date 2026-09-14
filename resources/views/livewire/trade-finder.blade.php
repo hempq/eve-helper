@@ -46,7 +46,7 @@
         <div class="card wide">
             <h2>Best flips <span class="muted">(profit is net of your sales tax)</span></h2>
             <div class="tablewrap">
-                <table>
+                <table class="sortable">
                     <tr>
                         <th>Item</th><th>Route</th><th class="r">Buy @</th><th class="r">Sell @</th>
                         <th class="r">Qty</th><th class="r">Invest</th><th class="r">Profit</th>

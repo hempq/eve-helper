@@ -26,7 +26,7 @@
         <p class="muted" style="margin:0">No matching agents within 15 jumps (on your current routing safety).</p>
     @else
         <div class="tablewrap">
-            <table>
+            <table class="sortable">
                 <tr>
                     <th>Level</th><th>Division</th><th>Corporation</th><th>Station</th><th>System</th>
                     <th class="r">Jumps</th>

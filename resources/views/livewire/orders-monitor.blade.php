@@ -16,7 +16,7 @@
         <p class="muted" style="margin: 0">No open market orders.</p>
     @else
         <div class="tablewrap">
-            <table>
+            <table class="sortable">
                 <tr>
                     <th>Item</th><th>Type</th><th>Station</th>
                     <th class="r">My price</th><th class="r">Best price</th>

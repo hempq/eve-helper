@@ -113,11 +113,12 @@
         <div class="card wide">
             <h2>{{ $regionName }} — all {{ $scored->count() }} systems ranked</h2>
             <div class="tablewrap">
-                <table>
+                <table class="sortable">
                     <tr>
                         <th>System</th><th>Sec</th><th>Constellation</th>
                         <th class="r" title="Jumps from your location">Jumps</th>
-                        <th class="r" title="NPC kills/h in this system (avg)">Sys NPC</th>
+                        <th class="r" title="NPC kills/h averaged over 3 days — a habitual local's ratting home scores high here">NPC avg</th>
+                        <th class="r" title="NPC kills in the last couple of hours (EWMA) — anomalies respawn in minutes, so quiet now = full pocket now">NPC now</th>
                         <th class="r" title="Constellation avg NPC kills/h — spawn evidence">Const NPC</th>
                         <th class="r" title="Gate traffic/h (avg)">Traffic</th>
                         <th class="r" title="Live player kills — danger">⚠</th>
@@ -135,6 +136,7 @@
                             <td class="muted">{{ $s->constellation }}</td>
                             <td class="r num">{{ $s->distance ?? '—' }}</td>
                             <td class="r num muted">{{ number_format($s->npcKills, 1) }}</td>
+                            <td class="r num {{ $s->npcKillsNow > 0 ? '' : 'muted' }}">{{ number_format($s->npcKillsNow, 1) }}</td>
                             <td class="r num ok">{{ number_format($s->constellationNpcKills, 1) }}</td>
                             <td class="r num muted">{{ number_format($s->traffic, 1) }}</td>
                             <td class="r num {{ $s->liveDanger > 0 ? 'bad' : 'muted' }}">{{ $s->liveDanger ?: '—' }}</td>
@@ -159,7 +161,7 @@
                 <p class="muted" style="margin: 0">No bounty payouts logged yet.</p>
             @else
                 <div class="tablewrap">
-                    <table>
+                    <table class="sortable">
                         <tr><th>When</th><th>Systems</th><th class="r">Ticks</th><th class="r">ISK</th><th class="r">ISK/h</th></tr>
                         @foreach ($sessions as $session)
                             <tr>

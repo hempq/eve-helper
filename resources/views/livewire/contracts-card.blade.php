@@ -11,7 +11,7 @@
         <p class="muted" style="margin: 0">No open contracts. (Needs the contracts scope — re-log in if this stays empty.)</p>
     @else
         <div class="tablewrap">
-            <table>
+            <table class="sortable">
                 <tr><th>Title</th><th>Type</th><th>Status</th><th class="r">Price</th><th class="r">Reward</th><th class="r">Expires</th></tr>
                 @foreach ($contracts as $c)
                     <tr>

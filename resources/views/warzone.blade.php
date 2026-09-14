@@ -14,7 +14,7 @@
             <p class="muted" style="margin:0">No active incursions (or ESI is unavailable).</p>
         @else
             <div class="tablewrap">
-                <table>
+                <table class="sortable">
                     <tr>
                         <th>Constellation</th><th>Region</th><th>Staging</th>
                         <th class="r" title="Jumps from your location to the staging system">Jumps</th>
@@ -55,7 +55,7 @@
             @if ($fw->summary === [])
                 <p class="muted" style="margin:0">Faction warfare data unavailable.</p>
             @else
-                <table>
+                <table class="sortable">
                     <tr><th>Faction</th><th class="r">Systems held</th><th class="r">Contested</th></tr>
                     @foreach (collect($fw->summary)->sortByDesc('systems') as $row)
                         <tr>
@@ -77,7 +77,7 @@
                 <p class="muted" style="margin:0">No contested systems right now.</p>
             @else
                 <div class="tablewrap">
-                    <table>
+                    <table class="sortable">
                         <tr>
                             <th>System</th><th>Sec</th><th class="r">Jumps</th>
                             <th>Occupier</th><th class="r" title="Victory points toward flipping the system">Contest</th>

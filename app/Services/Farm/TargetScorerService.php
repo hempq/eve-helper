@@ -12,11 +12,15 @@ use Illuminate\Support\Facades\DB;
  * carry the signal:
  *   - Supply: constellation-averaged NPC kills prove sites spawn & respawn
  *     there; the pilot's own logged sites are personal ground truth.
- *   - Vacancy: low in-system NPC kills and low gate traffic mean nobody is
- *     clearing sites, so unscanned ones pile up — averaged over a history
- *     window because a single ESI hour is very noisy. Dead-ends amplify this,
- *     but ONLY when their kill history is near zero (else it is a local's
- *     ratting home, per explorer guides).
+ *   - Vacancy, split by timescale (v7): combat anomalies respawn within
+ *     minutes (constellation-wide batch respawn) and untouched signatures
+ *     live for days, so AVAILABILITY — is the pocket cleared out right
+ *     now? — only depends on the last couple of hours (short EWMA), while
+ *     the multi-day average measures COMPETITION — is this some local's
+ *     daily ratting home? A system farmed out yesterday is full again
+ *     today; only the habitual farmer keeps it empty. Low gate traffic
+ *     stays multi-day (habitual through-traffic). Dead-ends amplify
+ *     vacancy, but ONLY when quiet right now (short window).
  *   - Danger: the live ship/pod kill snapshot is a "camp right now" tripwire.
  * Highsec inverts the emphasis: NPC kills there are polluted by mission and
  * incursion hubs, so gate traffic becomes the primary vacancy signal.
@@ -74,6 +78,12 @@ class TargetScorerService
         // Live snapshot is always the danger tripwire, regardless of history.
         [, $liveShipKills, $livePodKills] = $this->killActivity();
 
+        // Short-window availability signal; without history the live hour is
+        // the best "right now" estimate we have (making both timescales
+        // identical, i.e. the pre-v7 behaviour).
+        $recent = $usingHistory ? $this->activity->recentEwma() : ['npc' => $npcAvg, 'snapshots' => 0];
+        $npcRecent = $recent['npc'];
+
         // Backlog/surge trends need most of a week of snapshots; until then
         // every system scores without the trend term.
         $trends = $usingHistory ? $this->activity->trends() : ['ready' => false, 'systems' => []];
@@ -113,7 +123,7 @@ class TargetScorerService
                 return $bandOk && $factionRegionOk;
             })
             ->map(function ($system) use (
-                $npcAvg, $playersAvg, $jumpsAvg, $liveShipKills, $livePodKills,
+                $npcAvg, $npcRecent, $playersAvg, $jumpsAvg, $liveShipKills, $livePodKills,
                 $gateCounts, $constNpc, $mySites, $recentlyCleared, $distances, $trends
             ) {
                 $id = (int) $system->system_id;
@@ -122,6 +132,7 @@ class TargetScorerService
                 $isHighsec = $security >= self::HIGHSEC_LIMIT;
 
                 $sysNpc = $npcAvg[$id] ?? 0.0;
+                $sysNpcNow = $npcRecent[$id] ?? 0.0;
                 $traffic = $jumpsAvg[$id] ?? 0.0;
                 $constNpcHere = $constNpc[$constellationId] ?? 0.0;
                 $gates = $gateCounts[$id] ?? 0;
@@ -139,17 +150,25 @@ class TargetScorerService
                 $ownBonus = 3 * log1p($ownSites) - 2 * log1p($recentlyCleared[$constellationId] ?? 0);
 
                 $supply = 10 * log1p($constNpcHere) + $ownBonus;
-                $vacancy = -$wNpc * log1p($sysNpc) - $wJumps * log1p($traffic);
+
+                // Availability (60%): quiet in the last couple of hours means
+                // the fast-respawning pocket is full and nobody is taking it.
+                // Competition (40%): the multi-day average flags a local's
+                // daily ratting home even when they are offline right now.
+                $vacancy = -0.6 * $wNpc * log1p($sysNpcNow)
+                    - 0.4 * $wNpc * log1p($sysNpc)
+                    - $wJumps * log1p($traffic);
 
                 // Dead-end pockets are where unscanned combat anomalies pile
                 // up (no through traffic clears them). Graded, not gated: a
-                // quiet dead-end gets the full bonus, a busy one (a local's
-                // ratting home) keeps a small share instead of nothing.
+                // dead-end quiet RIGHT NOW gets the full bonus even if it was
+                // farmed yesterday (fast respawn), a currently busy one (a
+                // local's ratting home) keeps a small share instead of nothing.
                 $vacancy += match ($gates) {
                     1 => 16,
                     2 => 5,
                     default => 0,
-                } * exp(-$sysNpc / 3);
+                } * exp(-$sysNpcNow / 3);
 
                 // Truesec: in null, more-negative security means more and
                 // richer anomalies (sov Pirate Detection upgrades). Weighted
@@ -192,6 +211,7 @@ class TargetScorerService
                     'constellation' => $system->constellation,
                     'distance' => $distance,
                     'npcKills' => round($sysNpc, 1),
+                    'npcKillsNow' => round($sysNpcNow, 1),
                     'constellationNpcKills' => round($constNpcHere, 1),
                     'playerKills' => round($playersAvg[$id] ?? 0, 1),
                     'liveDanger' => $liveDanger,
