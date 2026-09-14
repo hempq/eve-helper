@@ -12,23 +12,36 @@
         </p>
 
         <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-            <div class="combo" style="min-width: 260px;">
-                <input type="text" wire:model.live.debounce.300ms="regionSearch"
-                       placeholder="Region — type a region or system name" autocomplete="off"
-                       style="width: 100%; background: var(--surface2); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); padding: 7px 11px; font: inherit; font-size: 13px;">
-                @if ($regionResults->isNotEmpty())
-                    <div class="dropdown">
-                        @foreach ($regionResults as $result)
-                            <button class="dd-item" wire:click="pickRegion({{ $result->region_id }})">
-                                <b>{{ $result->name }}</b>
-                                <span class="muted">{{ $result->via_system ? 'via '.$result->via_system : 'region' }}</span>
-                            </button>
-                        @endforeach
-                    </div>
-                @elseif ($searchOpen && mb_strlen(trim($regionSearch)) >= 2)
-                    <div class="dropdown"><div class="dd-item" style="cursor: default; color: var(--muted)">No matching region.</div></div>
-                @endif
+            <div style="display:inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden;">
+                <button wire:click="$set('scope', 'region')"
+                        style="border: 0; padding: 7px 13px; font: 600 12.5px var(--font-body); cursor: pointer;
+                               background: {{ ! $factionScope ? 'var(--accent-dim, var(--surface2))' : 'transparent' }};
+                               color: {{ ! $factionScope ? 'var(--accent)' : 'var(--muted)' }};">One region</button>
+                <button wire:click="$set('scope', 'faction')" title="Sweep every region where the chosen pirate faction spawns — e.g. Guristas covers all Caldari space plus its null home regions"
+                        style="border: 0; border-left: 1px solid var(--line); padding: 7px 13px; font: 600 12.5px var(--font-body); cursor: pointer;
+                               background: {{ $factionScope ? 'var(--accent-dim, var(--surface2))' : 'transparent' }};
+                               color: {{ $factionScope ? 'var(--accent)' : 'var(--muted)' }};">Faction space</button>
             </div>
+
+            @if (! $factionScope)
+                <div class="combo" style="min-width: 260px;">
+                    <input type="text" wire:model.live.debounce.300ms="regionSearch"
+                           placeholder="Region — type a region or system name" autocomplete="off"
+                           style="width: 100%; background: var(--surface2); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); padding: 7px 11px; font: inherit; font-size: 13px;">
+                    @if ($regionResults->isNotEmpty())
+                        <div class="dropdown">
+                            @foreach ($regionResults as $result)
+                                <button class="dd-item" wire:click="pickRegion({{ $result->region_id }})">
+                                    <b>{{ $result->name }}</b>
+                                    <span class="muted">{{ $result->via_system ? 'via '.$result->via_system : 'region' }}</span>
+                                </button>
+                            @endforeach
+                        </div>
+                    @elseif ($searchOpen && mb_strlen(trim($regionSearch)) >= 2)
+                        <div class="dropdown"><div class="dd-item" style="cursor: default; color: var(--muted)">No matching region.</div></div>
+                    @endif
+                </div>
+            @endif
 
             <label class="muted" style="display:flex; gap:6px; align-items:center; font-size:13px;">space
                 <select wire:model.live="securityBand" style="background: var(--surface2); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); padding: 6px 8px; font: inherit;">
@@ -38,9 +51,9 @@
                     <option value="nullsec">null-sec</option>
                 </select>
             </label>
-            <label class="muted" style="display:flex; gap:6px; align-items:center; font-size:13px;">loot faction
-                <select wire:model.live="faction" style="background: var(--surface2); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); padding: 6px 8px; font: inherit;">
-                    <option value="">any</option>
+            <label class="muted" style="display:flex; gap:6px; align-items:center; font-size:13px;">{{ $factionScope ? 'faction' : 'loot faction' }}
+                <select wire:model.live="faction" style="background: var(--surface2); border: 1px solid {{ $factionScope && $faction === '' ? 'var(--gold)' : 'var(--line)' }}; border-radius: 6px; color: var(--ink); padding: 6px 8px; font: inherit;">
+                    <option value="">{{ $factionScope ? '— pick a faction —' : 'any' }}</option>
                     @foreach ($factions as $f)<option value="{{ $f }}">{{ $f }}</option>@endforeach
                 </select>
             </label>
@@ -48,7 +61,7 @@
                 <input type="number" wire:model.live.debounce.400ms="tourSize" min="3" max="40"
                        style="width: 64px; background: var(--surface2); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); padding: 6px 8px; font: inherit;"> systems
             </label>
-            <span wire:loading class="muted">Scoring region…</span>
+            <span wire:loading class="muted">Scoring…</span>
         </div>
 
         @if ($notice)
@@ -56,14 +69,14 @@
         @endif
     </div>
 
-    @if ($regionName === null)
-        <div class="card"><p class="muted" style="margin:0">Pick a region above to score it.</p></div>
+    @if ($scopeName === null)
+        <div class="card"><p class="muted" style="margin:0">{{ $factionScope ? 'Pick a pirate faction above to sweep its whole space.' : 'Pick a region above to score it.' }}</p></div>
     @elseif ($scored->isEmpty())
-        <div class="card"><p class="muted" style="margin:0">No systems match the filters in {{ $regionName }}.</p></div>
+        <div class="card"><p class="muted" style="margin:0">No systems match the filters in {{ $scopeName }}.</p></div>
     @else
         @if ($tour !== null)
             <div class="card wide" style="margin-bottom: 14px">
-                <h2>Best {{ count($tour->systems) }} in {{ $regionName }}
+                <h2>Best {{ count($tour->systems) }} in {{ $scopeName }}
                     <span class="muted" style="text-transform:none; letter-spacing:0">
                         — {{ $tour->totalJumps }} jumps total
                         @if ($tour->approachJumps !== null)({{ $tour->approachJumps }} to reach the first)@endif
@@ -108,14 +121,23 @@
                     </div>
                 @endif
             </div>
+        @else
+            <div class="card wide" style="margin-bottom: 14px">
+                <p class="muted" style="margin:0">
+                    No tour possible — none of the top-scored systems are reachable under your routing safety
+                    ({{ ['highsec' => 'High-sec only', 'lowsec' => 'High+Low', 'any' => 'All space'][$character->route_security] ?? $character->route_security }}).
+                    Loosen the shield toggle in the header, or narrow the space filter.
+                </p>
+            </div>
         @endif
 
         <div class="card wide">
-            <h2>{{ $regionName }} — all {{ $scored->count() }} systems ranked</h2>
+            <h2>{{ $scopeName }} — all {{ $scored->count() }} systems ranked</h2>
             <div class="tablewrap">
                 <table class="sortable">
                     <tr>
                         <th>System</th><th>Sec</th><th>Constellation</th>
+                        @if ($factionScope)<th>Region</th>@endif
                         <th class="r" title="Jumps from your location">Jumps</th>
                         <th class="r" title="NPC kills/h averaged over 3 days — a habitual local's ratting home scores high here">NPC avg</th>
                         <th class="r" title="NPC kills in the last couple of hours (EWMA) — anomalies respawn in minutes, so quiet now = full pocket now">NPC now</th>
@@ -134,6 +156,7 @@
                             </td>
                             <td class="num" style="color: {{ $s->security >= 0.5 ? 'var(--ok)' : ($s->security > 0 ? 'var(--gold)' : 'var(--bad)') }}">{{ number_format($s->security, 1) }}</td>
                             <td class="muted">{{ $s->constellation }}</td>
+                            @if ($factionScope)<td class="muted">{{ $s->region }}</td>@endif
                             <td class="r num">{{ $s->distance ?? '—' }}</td>
                             <td class="r num muted">{{ number_format($s->npcKills, 1) }}</td>
                             <td class="r num {{ $s->npcKillsNow > 0 ? '' : 'muted' }}">{{ number_format($s->npcKillsNow, 1) }}</td>

@@ -16,8 +16,9 @@ use Livewire\Attributes\On;
 use Livewire\Component;
 
 /**
- * Region-based farm advisor: pick a region, score every system in it, and
- * plan an optimal tour over the best N.
+ * Farm advisor with two scopes: score one region, or sweep every region a
+ * pirate faction spawns in (e.g. Guristas = all Caldari space plus its null
+ * home regions), then plan an optimal tour over the best N.
  */
 class FarmAdvisor extends Component
 {
@@ -32,6 +33,9 @@ class FarmAdvisor extends Component
     public string $securityBand = 'any';
 
     public string $faction = '';
+
+    /** 'region' scores one region; 'faction' sweeps every region of a pirate faction. */
+    public string $scope = 'region';
 
     public int $tourSize = 8;
 
@@ -103,22 +107,38 @@ class FarmAdvisor extends Component
 
         $this->tourSize = max(3, min(40, $this->tourSize));
         $minSecurity = $this->character->minRouteSecurity();
+        $band = in_array($this->securityBand, ['highsec', 'lowsec', 'nullsec'], true) ? $this->securityBand : 'any';
+        $factionScope = $this->scope === 'faction';
 
-        $scored = $this->regionId !== null
-            ? $scorer->scoreRegion(
-                $this->regionId,
-                $this->character,
-                $minSecurity,
-                $this->faction !== '' ? $this->faction : null,
-                in_array($this->securityBand, ['highsec', 'lowsec', 'nullsec'], true) ? $this->securityBand : 'any',
-                $originId,
-            )
-            : collect();
+        if ($factionScope) {
+            $scored = $this->faction !== ''
+                ? $scorer->scoreFaction($this->faction, $this->character, $minSecurity, $band, $originId)
+                : \App\Services\Farm\ScoredSystems::make();
+            $regionCount = $this->faction !== ''
+                ? DB::table('regions')->whereIn('name', config("eve.factions.{$this->faction}", []))->count()
+                : 0;
+            $scopeName = $this->faction !== '' ? "{$this->faction} space ({$regionCount} regions)" : null;
+        } else {
+            $scored = $this->regionId !== null
+                ? $scorer->scoreRegion(
+                    $this->regionId,
+                    $this->character,
+                    $minSecurity,
+                    $this->faction !== '' ? $this->faction : null,
+                    $band,
+                    $originId,
+                )
+                : \App\Services\Farm\ScoredSystems::make();
+            $scopeName = $this->regionId !== null ? DB::table('regions')->where('region_id', $this->regionId)->value('name') : null;
+        }
 
         // Feed the tour a wider pool (with scores) than it will pick, so the
         // orienteering can trade a couple of jumps for a high-value dead-end
-        // that a strict top-N would have missed.
-        $candidates = $scored->take(max(45, $this->tourSize * 3))
+        // that a strict top-N would have missed. Only reachable systems: in
+        // faction scope the top scorers are often null-sec that the routing
+        // safety forbids, and unreachable candidates would starve the tour.
+        $candidates = $scored->filter(fn ($s) => $s->distance !== null)
+            ->take(max(45, $this->tourSize * 3))
             ->mapWithKeys(fn ($s) => [$s->systemId => max(0.1, $s->score)])
             ->all();
 
@@ -128,7 +148,8 @@ class FarmAdvisor extends Component
 
         return view('livewire.farm-advisor', [
             'originName' => $originName,
-            'regionName' => $this->regionId !== null ? DB::table('regions')->where('region_id', $this->regionId)->value('name') : null,
+            'scopeName' => $scopeName,
+            'factionScope' => $factionScope,
             'regionResults' => $this->searchRegions(),
             'scored' => $scored,
             'usingHistory' => $scored->usingHistory ?? false,

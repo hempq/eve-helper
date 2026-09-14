@@ -148,6 +148,27 @@ class TargetScorerServiceTest extends TestCase
         $this->assertGreaterThan($camped->score, $deadEnd->score);
     }
 
+    public function test_faction_scope_sweeps_all_faction_regions(): void
+    {
+        // Second Serpentis region with one system; Domain (Sansha) must stay out.
+        DB::table('regions')->insert([['region_id' => 3, 'name' => 'Placid']]);
+        DB::table('constellations')->insert([['constellation_id' => 3, 'region_id' => 3, 'name' => 'P-C']]);
+        DB::table('solar_systems')->insert([
+            ['system_id' => 31, 'constellation_id' => 3, 'region_id' => 3, 'name' => 'PlacidSys', 'security' => 0.3],
+            ['system_id' => 91, 'constellation_id' => 9, 'region_id' => 2, 'name' => 'DomainSys', 'security' => 0.5],
+        ]);
+
+        $scored = $this->scorer()->scoreFaction('Serpentis');
+
+        $names = $scored->pluck('name');
+        $this->assertContains('PlacidSys', $names); // Placid merged in
+        $this->assertContains('Quiet', $names);     // Fountain still there
+        $this->assertNotContains('DomainSys', $names); // Sansha region excluded
+
+        $placid = $scored->firstWhere('name', 'PlacidSys');
+        $this->assertSame('Placid', $placid->region);
+    }
+
     public function test_faction_filter_excludes_wrong_region(): void
     {
         // Fountain is Serpentis space -> Guristas filter yields nothing.

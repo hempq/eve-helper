@@ -47,10 +47,60 @@ class TargetScorerService
         string $securityBand = 'any',
         ?int $originSystemId = null,
     ): ScoredSystems {
+        // A faction filter on a region outside that faction's space yields
+        // nothing (the pirate spawn table is per region).
+        if ($faction !== null && ! in_array(
+            DB::table('regions')->where('region_id', $regionId)->value('name'),
+            config("eve.factions.{$faction}", []),
+            true,
+        )) {
+            return ScoredSystems::make();
+        }
+
+        return $this->scoreRegions([$regionId], $character, $minSecurity, $securityBand, $originSystemId);
+    }
+
+    /**
+     * Cross-region faction tour scope: every region where the given pirate
+     * faction spawns (highsec home regions AND their null home space), scored
+     * as one pool.
+     *
+     * @param  'highsec'|'lowsec'|'nullsec'|'any'  $securityBand
+     */
+    public function scoreFaction(
+        string $faction,
+        ?Character $character = null,
+        ?float $minSecurity = null,
+        string $securityBand = 'any',
+        ?int $originSystemId = null,
+    ): ScoredSystems {
+        $regionIds = DB::table('regions')
+            ->whereIn('name', config("eve.factions.{$faction}", []))
+            ->pluck('region_id')
+            ->map(fn ($id) => (int) $id)
+            ->all();
+
+        return $regionIds === []
+            ? ScoredSystems::make()
+            : $this->scoreRegions($regionIds, $character, $minSecurity, $securityBand, $originSystemId);
+    }
+
+    /**
+     * @param  list<int>  $regionIds
+     * @param  'highsec'|'lowsec'|'nullsec'|'any'  $securityBand
+     */
+    private function scoreRegions(
+        array $regionIds,
+        ?Character $character,
+        ?float $minSecurity,
+        string $securityBand,
+        ?int $originSystemId,
+    ): ScoredSystems {
         $systems = DB::table('solar_systems as s')
             ->join('constellations as c', 'c.constellation_id', '=', 's.constellation_id')
-            ->where('s.region_id', $regionId)
-            ->get(['s.system_id', 's.name', 's.security', 's.constellation_id', 'c.name as constellation']);
+            ->join('regions as r', 'r.region_id', '=', 's.region_id')
+            ->whereIn('s.region_id', $regionIds)
+            ->get(['s.system_id', 's.name', 's.security', 's.constellation_id', 'c.name as constellation', 'r.name as region']);
 
         if ($systems->isEmpty()) {
             return ScoredSystems::make();
@@ -91,7 +141,7 @@ class TargetScorerService
         $gateCounts = $this->gateCounts();
 
         // Constellation-averaged NPC kills (spawn evidence), over every member.
-        $constNpc = $this->constellationNpcAverage($regionId, $npcAvg);
+        $constNpc = $this->constellationNpcAverage($regionIds, $npcAvg);
 
         // Personal per-constellation logged-site counts (30 days) and the
         // ones cleared in the last 24h (which deplete the pocket).
@@ -103,24 +153,16 @@ class TargetScorerService
             ? $this->routes->distancesFrom($originSystemId, 60, minSecurity: $minSecurity)
             : [];
 
-        $factionRegionOk = $faction === null
-            || in_array(
-                DB::table('regions')->where('region_id', $regionId)->value('name'),
-                config("eve.factions.{$faction}", []),
-                true,
-            );
-
         return $systems
-            ->filter(function ($system) use ($securityBand, $factionRegionOk) {
+            ->filter(function ($system) use ($securityBand) {
                 $security = (float) $system->security;
-                $bandOk = match ($securityBand) {
+
+                return match ($securityBand) {
                     'highsec' => $security >= self::HIGHSEC_LIMIT,
                     'lowsec' => $security > 0.0 && $security < self::HIGHSEC_LIMIT,
                     'nullsec' => $security <= 0.0,
                     default => true,
                 };
-
-                return $bandOk && $factionRegionOk;
             })
             ->map(function ($system) use (
                 $npcAvg, $npcRecent, $playersAvg, $jumpsAvg, $liveShipKills, $livePodKills,
@@ -209,6 +251,7 @@ class TargetScorerService
                     'security' => round($security, 1),
                     'constellationId' => $constellationId,
                     'constellation' => $system->constellation,
+                    'region' => $system->region,
                     'distance' => $distance,
                     'npcKills' => round($sysNpc, 1),
                     'npcKillsNow' => round($sysNpcNow, 1),
@@ -230,13 +273,14 @@ class TargetScorerService
     }
 
     /**
+     * @param  list<int>  $regionIds
      * @param  array<int, float|int>  $npcBySystem
      * @return array<int, float> constellation id => avg npc kills per member
      */
-    private function constellationNpcAverage(int $regionId, array $npcBySystem): array
+    private function constellationNpcAverage(array $regionIds, array $npcBySystem): array
     {
         $members = DB::table('solar_systems')
-            ->where('region_id', $regionId)
+            ->whereIn('region_id', $regionIds)
             ->get(['system_id', 'constellation_id']);
 
         $result = [];
