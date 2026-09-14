@@ -24,3 +24,5 @@ Homestead.yaml
 Thumbs.db
 /.playwright-cli
 /deploy/certs/
+/test-results/
+/playwright-report/
