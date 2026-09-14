@@ -55,6 +55,10 @@ class CharacterSyncServiceTest extends TestCase
             ], $expires));
 
         $esi->shouldReceive('get')
+            ->with("/characters/{$id}/implants", [], $character)
+            ->andReturn(new EsiResponse([10216, 10217], $expires));
+
+        $esi->shouldReceive('get')
             ->with("/characters/{$id}/attributes", [], $character)
             ->andReturn(new EsiResponse([
                 'charisma' => 23,
@@ -93,6 +97,10 @@ class CharacterSyncServiceTest extends TestCase
         $this->assertSame(3332, (int) $queue[0]->skill_id);
         $this->assertSame('2026-09-16 12:04:39', $queue[0]->finish_date->toDateTimeString());
         $this->assertNull($queue[1]->start_date);
+
+        $implants = DB::table('character_implants')
+            ->where('character_id', $character->character_id)->pluck('type_id')->all();
+        $this->assertEqualsCanonicalizing([10216, 10217], array_map(intval(...), $implants));
     }
 
     public function test_queue_is_replaced_not_appended_on_resync(): void

@@ -28,6 +28,25 @@ class SdeImporter
         168 => 'willpower',
     ];
 
+    /** requiredSkillN dogma attribute id => matching requiredSkillNLevel id */
+    private const PREREQUISITE_PAIRS = [
+        182 => 277,
+        183 => 278,
+        184 => 279,
+        1285 => 1286,
+        1289 => 1287,
+        1290 => 1288,
+    ];
+
+    /** attribute-bonus dogma id (implants) => character attribute name */
+    private const IMPLANT_BONUS_ATTRIBUTES = [
+        175 => 'charisma',
+        176 => 'intelligence',
+        177 => 'memory',
+        178 => 'perception',
+        179 => 'willpower',
+    ];
+
     private const SKILL_CATEGORY_ID = 16;
 
     public function __construct(private readonly CsvReader $csv) {}
@@ -48,11 +67,28 @@ class SdeImporter
         })());
     }
 
+    public function importGroups(string $invGroupsPath): int
+    {
+        return $this->upsertChunked('item_groups', 'group_id', (function () use ($invGroupsPath) {
+            foreach ($this->csv->rows($invGroupsPath) as $row) {
+                yield [
+                    'group_id' => (int) $row['groupID'],
+                    'category_id' => (int) $row['categoryID'],
+                    'name' => (string) $row['groupName'],
+                ];
+            }
+        })());
+    }
+
     /**
-     * Requires importTypes() to have run: skill type ids are looked up from
-     * item_types via their groups' category.
+     * Single pass over the (large) dogma attribute dump filling three tables:
+     * skill_types, skill_prerequisites and implant_bonuses. Requires
+     * importTypes() to have run: skill type ids are looked up from item_types
+     * via their groups' category.
+     *
+     * @return array{skills: int, prerequisites: int, implant_bonuses: int}
      */
-    public function importSkills(string $invGroupsPath, string $dgmTypeAttributesPath): int
+    public function importDogma(string $invGroupsPath, string $dgmTypeAttributesPath): array
     {
         $skillGroupIds = [];
         foreach ($this->csv->rows($invGroupsPath) as $row) {
@@ -66,24 +102,41 @@ class SdeImporter
         );
 
         $skills = [];
+        $rawPrereqs = [];
+        $implantBonuses = [];
+
         foreach ($this->csv->rows($dgmTypeAttributesPath) as $row) {
             $typeId = (int) $row['typeID'];
+            $attributeId = (int) $row['attributeID'];
+            $value = (int) (float) ($row['valueFloat'] ?? $row['valueInt'] ?? 0);
+
+            // Bonus above 50 is bogus data (e.g. a year stored on some
+            // event boosters), not a real attribute bonus.
+            if (isset(self::IMPLANT_BONUS_ATTRIBUTES[$attributeId]) && $value > 0 && $value <= 50 && ! isset($skillTypeIds[$typeId])) {
+                $implantBonuses[] = [
+                    'type_id' => $typeId,
+                    'attribute' => self::IMPLANT_BONUS_ATTRIBUTES[$attributeId],
+                    'bonus' => $value,
+                ];
+
+                continue;
+            }
+
             if (! isset($skillTypeIds[$typeId])) {
                 continue;
             }
 
-            $attributeId = (int) $row['attributeID'];
-            $value = (int) (float) ($row['valueFloat'] ?? $row['valueInt'] ?? 0);
-
-            match ($attributeId) {
-                self::ATTR_RANK => $skills[$typeId]['rank'] = $value,
-                self::ATTR_PRIMARY => $skills[$typeId]['primary_attribute'] = self::CHARACTER_ATTRIBUTES[$value] ?? null,
-                self::ATTR_SECONDARY => $skills[$typeId]['secondary_attribute'] = self::CHARACTER_ATTRIBUTES[$value] ?? null,
+            match (true) {
+                $attributeId === self::ATTR_RANK => $skills[$typeId]['rank'] = $value,
+                $attributeId === self::ATTR_PRIMARY => $skills[$typeId]['primary_attribute'] = self::CHARACTER_ATTRIBUTES[$value] ?? null,
+                $attributeId === self::ATTR_SECONDARY => $skills[$typeId]['secondary_attribute'] = self::CHARACTER_ATTRIBUTES[$value] ?? null,
+                isset(self::PREREQUISITE_PAIRS[$attributeId]) => $rawPrereqs[$typeId]['skills'][$attributeId] = $value,
+                in_array($attributeId, self::PREREQUISITE_PAIRS, true) => $rawPrereqs[$typeId]['levels'][$attributeId] = $value,
                 default => null,
             };
         }
 
-        return $this->upsertChunked('skill_types', 'type_id', (function () use ($skills) {
+        $skillCount = $this->upsertChunked('skill_types', 'type_id', (function () use ($skills) {
             foreach ($skills as $typeId => $attributes) {
                 // Skip incomplete rows (a handful of unpublished/broken skills).
                 if (! isset($attributes['rank'], $attributes['primary_attribute'], $attributes['secondary_attribute'])) {
@@ -93,6 +146,32 @@ class SdeImporter
                 yield ['type_id' => $typeId, ...$attributes];
             }
         })());
+
+        $prereqCount = $this->upsertChunked('skill_prerequisites', ['skill_id', 'required_skill_id'], (function () use ($rawPrereqs) {
+            foreach ($rawPrereqs as $typeId => $raw) {
+                foreach ($raw['skills'] ?? [] as $skillAttrId => $requiredSkillId) {
+                    $level = $raw['levels'][self::PREREQUISITE_PAIRS[$skillAttrId]] ?? null;
+
+                    if ($requiredSkillId > 0 && $level !== null && $level > 0) {
+                        yield [
+                            'skill_id' => $typeId,
+                            'required_skill_id' => $requiredSkillId,
+                            'required_level' => $level,
+                        ];
+                    }
+                }
+            }
+        })());
+
+        $bonusCount = $this->upsertChunked('implant_bonuses', ['type_id', 'attribute'], (function () use ($implantBonuses) {
+            yield from $implantBonuses;
+        })());
+
+        return [
+            'skills' => $skillCount,
+            'prerequisites' => $prereqCount,
+            'implant_bonuses' => $bonusCount,
+        ];
     }
 
     public function importRegions(string $mapRegionsPath): int

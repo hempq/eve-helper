@@ -20,12 +20,37 @@ class SdeImportTest extends TestCase
         $this->artisan('eve:sde-import', ['--dir' => $this->fixtures()])
             ->assertSuccessful();
 
-        $this->assertSame(4, DB::table('item_types')->count());
-        $this->assertSame(2, DB::table('skill_types')->count());
+        $this->assertSame(7, DB::table('item_types')->count());
+        $this->assertSame(4, DB::table('item_groups')->count());
+        $this->assertSame('Gunnery', DB::table('item_groups')->where('group_id', 255)->value('name'));
+        $this->assertSame(3, DB::table('skill_types')->count());
+        $this->assertSame(1, DB::table('skill_prerequisites')->count());
+        $this->assertSame(2, DB::table('implant_bonuses')->count());
         $this->assertSame(1, DB::table('regions')->count());
         $this->assertSame(1, DB::table('constellations')->count());
         $this->assertSame(2, DB::table('solar_systems')->count());
         $this->assertSame(2, DB::table('system_jumps')->count());
+    }
+
+    public function test_prerequisites_and_implant_bonuses_are_extracted(): void
+    {
+        $this->artisan('eve:sde-import', ['--dir' => $this->fixtures()])->assertSuccessful();
+
+        // Spaceship Command (3327) requires Gunnery (3300) at level 2.
+        $prereq = DB::table('skill_prerequisites')->where('skill_id', 3327)->first();
+        $this->assertSame(3300, (int) $prereq->required_skill_id);
+        $this->assertSame(2, (int) $prereq->required_level);
+
+        // The ship's stray requiredSkill dogma row must not create a prerequisite.
+        $this->assertSame(0, DB::table('skill_prerequisites')->where('skill_id', 587)->count());
+
+        // Ocular Filter: +4 perception (valueFloat) and +4 charisma (valueInt).
+        $bonuses = DB::table('implant_bonuses')->where('type_id', 10216)
+            ->pluck('bonus', 'attribute')->all();
+        $this->assertEquals(['perception' => 4, 'charisma' => 4], $bonuses);
+
+        // The bogus 2021 "bonus" on the event booster must be filtered out.
+        $this->assertSame(0, DB::table('implant_bonuses')->where('type_id', 57300)->count());
     }
 
     public function test_types_are_imported_with_nulls_normalized(): void
@@ -85,8 +110,10 @@ class SdeImportTest extends TestCase
         $this->artisan('eve:sde-import', ['--dir' => $this->fixtures()])->assertSuccessful();
         $this->artisan('eve:sde-import', ['--dir' => $this->fixtures()])->assertSuccessful();
 
-        $this->assertSame(4, DB::table('item_types')->count());
-        $this->assertSame(2, DB::table('skill_types')->count());
+        $this->assertSame(7, DB::table('item_types')->count());
+        $this->assertSame(3, DB::table('skill_types')->count());
+        $this->assertSame(1, DB::table('skill_prerequisites')->count());
+        $this->assertSame(2, DB::table('implant_bonuses')->count());
         $this->assertSame(2, DB::table('system_jumps')->count());
     }
 }

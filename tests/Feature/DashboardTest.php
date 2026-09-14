@@ -50,9 +50,10 @@ class DashboardTest extends TestCase
             'training_start_sp' => 110816,
         ]);
 
-        // Sync must be attempted exactly once; DB already holds the data.
+        // Sync runs in the controller and in the TrainingStatus Livewire
+        // component; both go through the staleness guard.
         $this->mock(CharacterSyncService::class)
-            ->shouldReceive('sync')->once();
+            ->shouldReceive('sync')->twice();
 
         $this->withSession(['character_id' => $character->character_id])
             ->get('/')
@@ -79,7 +80,7 @@ class DashboardTest extends TestCase
             'finished_level' => 5,
         ]);
 
-        $this->mock(CharacterSyncService::class)->shouldReceive('sync')->once();
+        $this->mock(CharacterSyncService::class)->shouldReceive('sync')->twice();
 
         $this->withSession(['character_id' => $character->character_id])
             ->get('/')

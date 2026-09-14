@@ -6,7 +6,7 @@ use App\Models\Character;
 use App\Services\Characters\CharacterSyncService;
 use App\Services\Esi\Exceptions\EsiErrorLimited;
 use App\Services\Esi\Exceptions\EsiRequestFailed;
-use App\Services\Skills\TrainingCalculator;
+use App\Services\Skills\QueueAnalysisService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
@@ -16,7 +16,7 @@ class DashboardController extends Controller
     public function show(
         Request $request,
         CharacterSyncService $sync,
-        TrainingCalculator $calculator,
+        QueueAnalysisService $analysis,
     ): View {
         $character = ($id = $request->session()->get('character_id')) !== null
             ? Character::find($id)
@@ -44,32 +44,25 @@ class DashboardController extends Controller
             ->get();
 
         $current = $queue->first();
-        $currentSpPerHour = null;
-        $currentProgress = null;
 
-        if ($current !== null && $current->primary_attribute !== null) {
-            $currentSpPerHour = $calculator->spPerMinute(
-                (int) $character->{$current->primary_attribute},
-                (int) $character->{$current->secondary_attribute},
-            ) * 60;
-        }
-
-        if ($current !== null && $current->start_date !== null && $current->finish_date !== null) {
-            $start = strtotime($current->start_date);
-            $finish = strtotime($current->finish_date);
-            $currentProgress = $finish > $start
-                ? min(1, max(0, (time() - $start) / ($finish - $start)))
-                : null;
-        }
+        $skillStats = DB::table('character_skills')
+            ->where('character_id', $character->character_id)
+            ->selectRaw('COUNT(*) as total, SUM(CASE WHEN trained_level = 5 THEN 1 ELSE 0 END) as at_five')
+            ->first();
 
         return view('dashboard', [
             'character' => $character,
             'queue' => $queue,
-            'current' => $current,
-            'currentSpPerHour' => $currentSpPerHour,
-            'currentProgress' => $currentProgress,
-            'queueEndsAt' => $queue->last()?->finish_date,
+            'queueEndsAt' => $queue->whereNotNull('finish_date')->last()?->finish_date,
             'queuePaused' => $current !== null && $current->start_date === null,
+            'skillCount' => (int) ($skillStats->total ?? 0),
+            'skillsAtFive' => (int) ($skillStats->at_five ?? 0),
+            'implantBonuses' => $analysis->implantBonuses($character),
+            'implants' => DB::table('character_implants as ci')
+                ->join('item_types as t', 't.type_id', '=', 'ci.type_id')
+                ->where('ci.character_id', $character->character_id)
+                ->orderBy('t.name')
+                ->pluck('t.name'),
             'syncError' => $syncError,
         ]);
     }

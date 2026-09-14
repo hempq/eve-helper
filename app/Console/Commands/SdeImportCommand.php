@@ -26,7 +26,8 @@ class SdeImportCommand extends Command
 
         $steps = [
             'item types' => fn () => $importer->importTypes($this->resolve($dir, 'invTypes.csv')),
-            'skills' => fn () => $importer->importSkills(
+            'item groups' => fn () => $importer->importGroups($this->resolve($dir, 'invGroups.csv')),
+            'dogma' => fn () => $importer->importDogma(
                 $this->resolve($dir, 'invGroups.csv'),
                 $this->resolve($dir, 'dgmTypeAttributes.csv'),
             ),
@@ -37,8 +38,11 @@ class SdeImportCommand extends Command
         ];
 
         foreach ($steps as $label => $step) {
-            $count = $step();
-            $this->info(sprintf('Imported %s %s.', number_format($count), $label));
+            $result = $step();
+
+            foreach (is_array($result) ? $result : [$label => $result] as $name => $count) {
+                $this->info(sprintf('Imported %s %s.', number_format($count), str_replace('_', ' ', $name)));
+            }
         }
 
         return self::SUCCESS;

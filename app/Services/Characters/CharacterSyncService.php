@@ -27,6 +27,7 @@ class CharacterSyncService
         $this->syncSkills($character);
         $this->syncSkillQueue($character);
         $this->syncAttributes($character);
+        $this->syncImplants($character);
 
         $character->forceFill(['last_synced_at' => CarbonImmutable::now()])->save();
     }
@@ -78,6 +79,22 @@ class CharacterSyncService
 
             foreach (array_chunk($rows, 500) as $chunk) {
                 DB::table('character_skill_queue')->insert($chunk);
+            }
+        });
+    }
+
+    private function syncImplants(Character $character): void
+    {
+        $response = $this->esi->get("/characters/{$character->character_id}/implants", [], $character);
+
+        DB::transaction(function () use ($character, $response) {
+            DB::table('character_implants')->where('character_id', $character->character_id)->delete();
+
+            if ($response->data !== []) {
+                DB::table('character_implants')->insert(array_map(fn (int $typeId) => [
+                    'character_id' => $character->character_id,
+                    'type_id' => $typeId,
+                ], $response->data));
             }
         });
     }
