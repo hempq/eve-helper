@@ -16,6 +16,10 @@
 
     <livewire:lp-store :character="$character" />
 
+    <livewire:blueprints-card :character="$character" lazy />
+
+    <livewire:fittings-card :character="$character" lazy />
+
     <div style="margin-top: 24px">
         <livewire:market-appraisal :character="$character" />
     </div>

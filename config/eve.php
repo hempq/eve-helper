@@ -51,6 +51,16 @@ return [
             // Added 2026-09-14 — needs a re-login: standing-aware broker
             // fees and the agent finder.
             'esi-characters.read_standings.v1',
+            // Added 2026-09-14 (2nd batch) — needs a re-login: R&D datacores,
+            // PI extractors, mining ledger, industry jobs + blueprints,
+            // in-game notifications, fitting replacement costs.
+            'esi-characters.read_agents_research.v1',
+            'esi-planets.manage_planets.v1',
+            'esi-industry.read_character_mining.v1',
+            'esi-industry.read_character_jobs.v1',
+            'esi-characters.read_blueprints.v1',
+            'esi-characters.read_notifications.v1',
+            'esi-fittings.read_fittings.v1',
         ],
     ],
 

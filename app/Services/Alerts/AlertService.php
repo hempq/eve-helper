@@ -27,6 +27,8 @@ class AlertService
         private readonly UndercutService $undercut,
         private readonly EsiClientInterface $esi,
         private readonly RouteService $routes,
+        private readonly \App\Services\Industry\PlanetaryService $planets,
+        private readonly \App\Services\Industry\IndustryService $industry,
     ) {}
 
     public function refreshAll(): int
@@ -49,6 +51,11 @@ class AlertService
             $this->undercutAlerts($character),
             $this->escalationAlerts($character),
             $this->cloneAlerts($character),
+            // ESI-backed optional-scope generators: a missing scope, an auth
+            // hiccup or a malformed payload must never break the refresh.
+            $this->guarded(fn () => $this->planetaryAlerts($character)),
+            $this->guarded(fn () => $this->industryAlerts($character)),
+            $this->guarded(fn () => $this->notificationAlerts($character)),
         );
 
         $liveKeys = array_column($live, 'dedupe_key');
@@ -213,6 +220,119 @@ class AlertService
             'message' => "Your death clone is {$jumps} jumps away in {$homeSystem} — if podded you respawn there. Consider moving it closer.",
             'url' => null, 'severity' => 'warn',
         ]];
+    }
+
+    /**
+     * @return list<array<string,mixed>>
+     */
+    private function guarded(callable $generator): array
+    {
+        try {
+            return $generator();
+        } catch (\Throwable) {
+            return [];
+        }
+    }
+
+    /**
+     * PI extractor expired or expiring within 12h.
+     *
+     * @return list<array<string,mixed>>
+     */
+    private function planetaryAlerts(Character $character): array
+    {
+        $result = $this->planets->colonies($character);
+
+        if ($result->needsScope) {
+            return [];
+        }
+
+        $alerts = [];
+
+        foreach ($result->colonies as $colony) {
+            if ($colony->extractorExpiry === null) {
+                continue;
+            }
+
+            if ($colony->expired) {
+                $alerts[] = [
+                    'type' => 'planetary', 'dedupe_key' => "pi_expired_{$colony->planetId}",
+                    'message' => "PI extractors on {$colony->system} ({$colony->planetType}) have stopped — restart the extraction program.",
+                    'url' => null, 'severity' => 'warn',
+                ];
+            } elseif ($colony->extractorExpiry->lt(now()->addHours(12))) {
+                $alerts[] = [
+                    'type' => 'planetary', 'dedupe_key' => "pi_expiring_{$colony->planetId}",
+                    'message' => "PI extractors on {$colony->system} ({$colony->planetType}) stop ".$colony->extractorExpiry->diffForHumans().'.',
+                    'url' => null, 'severity' => 'info',
+                ];
+            }
+        }
+
+        return $alerts;
+    }
+
+    /**
+     * Industry jobs finished and waiting to be delivered.
+     *
+     * @return list<array<string,mixed>>
+     */
+    private function industryAlerts(Character $character): array
+    {
+        $result = $this->industry->jobs($character);
+
+        if ($result->needsScope || $result->readyCount === 0) {
+            return [];
+        }
+
+        return [[
+            'type' => 'industry', 'dedupe_key' => 'industry_jobs_ready',
+            'message' => $result->readyCount.' industry job'.($result->readyCount === 1 ? '' : 's').' finished — deliver to collect the output.',
+            'url' => null, 'severity' => 'info',
+        ]];
+    }
+
+    /** In-game notification types worth surfacing to a solo pilot. */
+    private const NOTIFICATION_TYPES = [
+        'StructureUnderAttack', 'StructureLostShields', 'StructureLostArmor',
+        'StructureDestroyed', 'TowerAlertMsg', 'OrbitalAttacked',
+        'AllWarDeclaredMsg', 'CorpWarDeclaredMsg', 'DeclareWar',
+        'SkyhookUnderAttack',
+    ];
+
+    /**
+     * Unread high-importance in-game notifications from the last 48 hours.
+     *
+     * @return list<array<string,mixed>>
+     */
+    private function notificationAlerts(Character $character): array
+    {
+        try {
+            $rows = $this->esi->get("/characters/{$character->character_id}/notifications", [], $character)->data;
+        } catch (EsiErrorLimited|EsiRequestFailed) {
+            return [];
+        }
+
+        $alerts = [];
+
+        foreach ($rows as $row) {
+            if (($row['is_read'] ?? false) === true
+                || ! in_array($row['type'] ?? '', self::NOTIFICATION_TYPES, true)
+                || CarbonImmutable::parse($row['timestamp'])->lt(now()->subHours(48))) {
+                continue;
+            }
+
+            $alerts[] = [
+                'type' => 'notification',
+                'dedupe_key' => 'notification_'.$row['notification_id'],
+                'message' => 'EVE: '.preg_replace('/(?<!^)[A-Z]/', ' $0', (string) $row['type'])
+                    .' ('.CarbonImmutable::parse($row['timestamp'])->diffForHumans().') — check in-game mail.',
+                'url' => null,
+                'severity' => 'urgent',
+            ];
+        }
+
+        return array_slice($alerts, 0, 5);
     }
 
     private function systemOfLocation(int $locationId, string $locationType, Character $character): ?int
