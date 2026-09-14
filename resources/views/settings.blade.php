@@ -30,6 +30,18 @@
                     </span>
                 </label>
             @endforeach
+            <h2 style="margin-top: 18px">Hazard avoidance</h2>
+            <label style="display: flex; gap: 10px; align-items: baseline; padding: 6px 0; cursor: pointer;">
+                <input type="checkbox" name="hazard_avoidance" value="1" @checked($character->hazard_avoidance ?? true)>
+                <span>
+                    <b>Detour around live hazards</b>
+                    <span class="muted" style="font-size: 12.5px">
+                        — routes avoid incursion constellations, contested FW systems and systems with recent
+                        player kills when a reasonable detour exists (soft penalties, never longer than the hazard is worth).
+                    </span>
+                </span>
+            </label>
+
             <button type="submit" style="margin-top: 10px; background: var(--accent); color: var(--bg); border: 0; border-radius: 6px; padding: 8px 20px; cursor: pointer; font: 600 13px var(--font-body);">Save</button>
         </div>
     </form>

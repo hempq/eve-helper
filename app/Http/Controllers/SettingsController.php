@@ -33,7 +33,9 @@ class SettingsController extends Controller
             'route_security' => 'required|in:highsec,highlow,all',
         ]);
 
-        $character->forceFill($validated)->save();
+        $character->forceFill($validated + [
+            'hazard_avoidance' => $request->boolean('hazard_avoidance'),
+        ])->save();
 
         return redirect()->route('settings')->with('status', 'Settings saved.');
     }

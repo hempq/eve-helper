@@ -143,7 +143,13 @@ class FarmAdvisor extends Component
             ->all();
 
         $tour = ($originId !== null && $candidates !== [])
-            ? $tours->tour($originId, $candidates, $this->tourSize, $minSecurity)
+            ? $tours->tour(
+                $originId,
+                $candidates,
+                $this->tourSize,
+                $minSecurity,
+                $this->character->hazard_avoidance ? app(\App\Services\Universe\HazardService::class)->costs() : [],
+            )
             : null;
 
         return view('livewire.farm-advisor', [

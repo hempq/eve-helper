@@ -17,12 +17,16 @@ class SellTripPlanner
     public function __construct(
         private readonly AppraisalService $appraisal,
         private readonly RouteService $routes,
+        private readonly \App\Services\Universe\HazardService $hazards,
     ) {}
 
     /** @var array<string, ?int> */
     private array $jumpCache = [];
 
     private ?float $minSecurity = null;
+
+    /** @var array<int, float> */
+    private array $hazardCosts = [];
 
     /**
      * @param  array<int, int>  $typeQuantities
@@ -38,6 +42,7 @@ class SellTripPlanner
         $iskPerJump ??= (float) config('eve.market.isk_per_jump');
         $this->jumpCache = [];
         $this->minSecurity = $character->minRouteSecurity();
+        $this->hazardCosts = $character->hazard_avoidance ? $this->hazards->costs() : [];
 
         $hubs = config('eve.market.hubs');
         $hubSystemIds = DB::table('solar_systems')
@@ -171,7 +176,7 @@ class SellTripPlanner
             $totalNet += $stopNet;
 
             $route = ($previousSystem !== null && $stationSystem !== null)
-                ? $this->routes->route($previousSystem, $stationSystem, minSecurity: $this->minSecurity)
+                ? $this->routes->route($previousSystem, $stationSystem, minSecurity: $this->minSecurity, extraCosts: $this->hazardCosts)
                 : null;
 
             $stops[] = new TripStop(

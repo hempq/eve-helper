@@ -30,6 +30,9 @@ class SystemTourService
 
     private ?float $minSecurity = null;
 
+    /** @var array<int, float> hazard penalties applied when expanding legs */
+    private array $extraCosts = [];
+
     /**
      * Orienteering tour: from a pool of scored candidate systems, pick up to
      * $count that maximize collected score per jump, then order them for the
@@ -41,9 +44,10 @@ class SystemTourService
      * @return object{systems: list<object>, fullPath: list<object>, totalJumps: int,
      *   approachJumps: ?int, revisitCount: int}|null
      */
-    public function tour(int $originSystemId, array $candidates, int $count = 8, ?float $minSecurity = null): ?object
+    public function tour(int $originSystemId, array $candidates, int $count = 8, ?float $minSecurity = null, array $extraCosts = []): ?object
     {
         $this->minSecurity = $minSecurity;
+        $this->extraCosts = $extraCosts;
 
         unset($candidates[$originSystemId]);
 
@@ -102,7 +106,7 @@ class SystemTourService
         $approach = null;
 
         foreach ($order as $index => $systemId) {
-            $legRoute = $this->routes->route($previous, $systemId, preferSafer: false, minSecurity: $this->minSecurity);
+            $legRoute = $this->routes->route($previous, $systemId, preferSafer: false, minSecurity: $this->minSecurity, extraCosts: $this->extraCosts);
             $legJumps = $legRoute !== null ? count($legRoute) - 1 : ($distance[$previous][$systemId] ?? null);
 
             if ($legJumps !== null) {

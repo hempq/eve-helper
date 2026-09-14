@@ -31,7 +31,12 @@ class RouteService
      *
      * @return list<int>|null
      */
-    public function route(int $fromSystemId, int $toSystemId, bool $preferSafer = true, ?float $minSecurity = null): ?array
+    /**
+     * @param  array<int, float>  $extraCosts  per-system extra cost (hazard
+     *         penalties) — a system is crossed only when cheaper than the
+     *         detour around it
+     */
+    public function route(int $fromSystemId, int $toSystemId, bool $preferSafer = true, ?float $minSecurity = null, array $extraCosts = []): ?array
     {
         $this->load();
 
@@ -62,7 +67,7 @@ class RouteService
                     continue;
                 }
 
-                $cost = 1.0;
+                $cost = 1.0 + ($extraCosts[$neighbor] ?? 0.0);
 
                 if ($preferSafer && $security < self::HIGHSEC_LIMIT) {
                     $cost += self::UNSAFE_PENALTY;
@@ -90,9 +95,9 @@ class RouteService
         return array_reverse($path);
     }
 
-    public function jumps(int $fromSystemId, int $toSystemId, bool $preferSafer = true, ?float $minSecurity = null): ?int
+    public function jumps(int $fromSystemId, int $toSystemId, bool $preferSafer = true, ?float $minSecurity = null, array $extraCosts = []): ?int
     {
-        $route = $this->route($fromSystemId, $toSystemId, $preferSafer, $minSecurity);
+        $route = $this->route($fromSystemId, $toSystemId, $preferSafer, $minSecurity, $extraCosts);
 
         return $route === null ? null : count($route) - 1;
     }
