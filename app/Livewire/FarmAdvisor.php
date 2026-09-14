@@ -6,56 +6,72 @@ use App\Models\Character;
 use App\Services\Esi\EsiClientInterface;
 use App\Services\Esi\Exceptions\EsiErrorLimited;
 use App\Services\Esi\Exceptions\EsiRequestFailed;
-use App\Services\Farm\ConstellationTourService;
 use App\Services\Farm\RattingSessionService;
+use App\Services\Farm\SystemTourService;
 use App\Services\Farm\TargetScorerService;
-use App\Services\Universe\EveScoutService;
 use Illuminate\Contracts\View\View;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 use Livewire\Attributes\On;
 use Livewire\Component;
 
+/**
+ * Region-based farm advisor: pick a region, score every system in it, and
+ * plan an optimal tour over the best N.
+ */
 class FarmAdvisor extends Component
 {
-    #[On('safety-changed')]
-    public function onSafetyChanged(): void
-    {
-        // Re-render: the character model re-hydrates with the new setting.
-    }
-
     public Character $character;
 
-    public int $maxJumps = 10;
+    public ?int $regionId = null;
+
+    public string $regionSearch = '';
+
+    public bool $searchOpen = false;
 
     public string $securityBand = 'any';
 
     public string $faction = '';
 
-    public bool $useWormholes = false;
-
-    public ?int $tourConstellationId = null;
-
-    public string $constellationSearch = '';
-
-    /** Suppresses the dropdown after a pick until the user types again. */
-    public bool $searchOpen = false;
+    public int $tourSize = 8;
 
     public ?string $notice = null;
 
-    public function updatedConstellationSearch(): void
+    #[On('safety-changed')]
+    public function onSafetyChanged(): void
+    {
+        // Re-render with the new routing setting.
+    }
+
+    public function updatedRegionSearch(): void
     {
         $this->searchOpen = true;
     }
 
-    public function planTour(int $constellationId): void
+    public function pickRegion(int $regionId): void
     {
-        $this->tourConstellationId = $constellationId;
+        $this->regionId = $regionId;
         $this->searchOpen = false;
-        $this->constellationSearch = (string) DB::table('constellations')
-            ->where('constellation_id', $constellationId)->value('name');
+        $this->regionSearch = (string) DB::table('regions')->where('region_id', $regionId)->value('name');
     }
 
     public function sendTour(array $systemIds, EsiClientInterface $esi): void
+    {
+        $this->pushWaypoints($systemIds, $esi, 'Tour');
+    }
+
+    public function sendFullPath(array $systemIds, EsiClientInterface $esi): void
+    {
+        // Pushing every hop forces the client onto the exact route we planned.
+        $this->pushWaypoints($systemIds, $esi, 'Full path');
+    }
+
+    public function setDestination(int $systemId, EsiClientInterface $esi): void
+    {
+        $this->pushWaypoints([$systemId], $esi, 'Destination');
+    }
+
+    private function pushWaypoints(array $systemIds, EsiClientInterface $esi, string $label): void
     {
         try {
             foreach (array_values($systemIds) as $i => $systemId) {
@@ -65,92 +81,89 @@ class FarmAdvisor extends Component
                     'clear_other_waypoints' => $i === 0 ? 'true' : 'false',
                 ], $this->character);
             }
-            $this->notice = 'Tour ('.count($systemIds).' waypoints) sent to the EVE client. Good hunting o7';
+            $this->notice = $label.' ('.count($systemIds).' waypoint'.(count($systemIds) === 1 ? '' : 's').') sent to the EVE client. Good hunting o7';
         } catch (EsiErrorLimited|EsiRequestFailed $e) {
             $this->notice = 'Could not set waypoints ('.$e->getMessage().')';
-        }
-    }
-
-    public function setDestination(int $systemId, EsiClientInterface $esi): void
-    {
-        try {
-            $esi->post('/ui/autopilot/waypoint', [
-                'destination_id' => $systemId,
-                'add_to_beginning' => 'false',
-                'clear_other_waypoints' => 'true',
-            ], $this->character);
-
-            $this->notice = 'Destination set. Good hunting o7';
-        } catch (EsiErrorLimited|EsiRequestFailed $e) {
-            $this->notice = 'Could not set destination ('.$e->getMessage().')';
         }
     }
 
     public function render(
         EsiClientInterface $esi,
         TargetScorerService $scorer,
+        SystemTourService $tours,
         RattingSessionService $ratting,
-        EveScoutService $eveScout,
-        ConstellationTourService $tours,
     ): View {
-        [$originId, $originName] = $this->origin($esi);
+        [$originId, $originName, $originRegionId] = $this->origin($esi);
 
-        $this->maxJumps = max(1, min(25, $this->maxJumps));
+        // Default to the region the pilot is currently in.
+        if ($this->regionId === null && $originRegionId !== null) {
+            $this->regionId = $originRegionId;
+            $this->regionSearch = (string) DB::table('regions')->where('region_id', $originRegionId)->value('name');
+        }
 
-        // The global high-sec-only setting constrains the scan traversal —
-        // unless the pilot explicitly asks for low/null targets here.
-        $avoidUnsafe = $this->character->avoidsLowsec()
-            && ! in_array($this->securityBand, ['lowsec', 'nullsec'], true);
+        $this->tourSize = max(3, min(25, $this->tourSize));
+        $minSecurity = $this->character->minRouteSecurity();
 
-        $scored = $originId !== null
-            ? $scorer->score(
-                $originId,
-                $this->maxJumps,
-                in_array($this->securityBand, ['highsec', 'lowsec', 'nullsec'], true) ? $this->securityBand : 'any',
-                $this->faction !== '' ? $this->faction : null,
-                $this->useWormholes ? $eveScout->edges() : [],
+        $scored = $this->regionId !== null
+            ? $scorer->scoreRegion(
+                $this->regionId,
                 $this->character,
-                $avoidUnsafe,
+                $minSecurity,
+                $this->faction !== '' ? $this->faction : null,
+                in_array($this->securityBand, ['highsec', 'lowsec', 'nullsec'], true) ? $this->securityBand : 'any',
+                $originId,
             )
             : collect();
 
-        $constellations = $tours->rank($scored);
-
-        // Default the tour to the best-ranked constellation.
-        if ($this->tourConstellationId === null && $constellations->isNotEmpty()) {
-            $this->tourConstellationId = $constellations->first()->constellationId;
-        }
-
-        $tour = ($originId !== null && $this->tourConstellationId !== null)
-            ? $tours->tour($originId, $this->tourConstellationId, $avoidUnsafe)
+        $tour = ($originId !== null && $scored->isNotEmpty())
+            ? $tours->tour($originId, $scored->take($this->tourSize)->pluck('systemId')->all(), $minSecurity)
             : null;
-
-        $searchResults = ($this->searchOpen && mb_strlen(trim($this->constellationSearch)) >= 2)
-            ? DB::table('constellations as c')
-                ->join('regions as r', 'r.region_id', '=', 'c.region_id')
-                ->where('c.name', 'like', trim($this->constellationSearch).'%')
-                ->orderBy('c.name')
-                ->limit(8)
-                ->get(['c.constellation_id', 'c.name', 'r.name as region'])
-            : collect();
 
         return view('livewire.farm-advisor', [
             'originName' => $originName,
-            'targets' => $scored->take(25),
-            'constellationResults' => $searchResults,
-            'constellations' => $constellations,
+            'regionName' => $this->regionId !== null ? DB::table('regions')->where('region_id', $this->regionId)->value('name') : null,
+            'regionResults' => $this->searchRegions(),
+            'scored' => $scored,
+            'usingHistory' => $scored->usingHistory ?? false,
             'tour' => $tour,
-            'tourName' => $constellations->firstWhere('constellationId', $this->tourConstellationId)?->name
-                ?? \Illuminate\Support\Facades\DB::table('constellations')->where('constellation_id', $this->tourConstellationId)->value('name'),
-            'sessions' => $ratting->sessions($this->character)->take(15),
-            'dailyTotals' => $ratting->dailyTotals($this->character),
             'factions' => array_keys(config('eve.factions')),
-            'shortcuts' => collect($eveScout->connections())->sortBy('remainingHours')->take(12),
+            'sessions' => $ratting->sessions($this->character)->take(10),
+            'dailyTotals' => $ratting->dailyTotals($this->character),
         ]);
     }
 
     /**
-     * @return array{0: ?int, 1: string}
+     * Search regions by region name OR a system name within them.
+     *
+     * @return Collection<int, object>
+     */
+    private function searchRegions(): Collection
+    {
+        if (! $this->searchOpen || mb_strlen(trim($this->regionSearch)) < 2) {
+            return collect();
+        }
+
+        $like = '%'.str_replace(['%', '_'], ['\\%', '\\_'], trim($this->regionSearch)).'%';
+
+        $byRegion = DB::table('regions')
+            ->where('name', 'like', $like)
+            ->select('region_id', 'name', DB::raw('NULL as via_system'));
+
+        $bySystem = DB::table('solar_systems as s')
+            ->join('regions as r', 'r.region_id', '=', 's.region_id')
+            ->where('s.name', 'like', $like)
+            ->select('r.region_id', 'r.name', 's.name as via_system');
+
+        return $byRegion->union($bySystem)
+            ->orderBy('name')
+            ->limit(10)
+            ->get()
+            ->unique('region_id')
+            ->values();
+    }
+
+    /**
+     * @return array{0: ?int, 1: string, 2: ?int} system id, name, region id
      */
     private function origin(EsiClientInterface $esi): array
     {
@@ -158,11 +171,11 @@ class FarmAdvisor extends Component
             $location = $esi->get("/characters/{$this->character->character_id}/location", [], $this->character);
             $systemId = (int) $location->data['solar_system_id'];
 
-            $name = DB::table('solar_systems')->where('system_id', $systemId)->value('name') ?? "#{$systemId}";
+            $row = DB::table('solar_systems')->where('system_id', $systemId)->first(['name', 'region_id']);
 
-            return [$systemId, $name];
+            return [$systemId, $row->name ?? "#{$systemId}", $row ? (int) $row->region_id : null];
         } catch (EsiErrorLimited|EsiRequestFailed) {
-            return [null, 'unknown (ESI unavailable)'];
+            return [null, 'unknown (ESI unavailable)', null];
         }
     }
 }

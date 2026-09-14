@@ -40,11 +40,28 @@ class Character extends Model
         return $this->hasMany(CharacterSkillQueueEntry::class, 'character_id')->orderBy('position');
     }
 
+    public const ROUTE_SECURITY_LABELS = [
+        'highsec' => 'High-sec only',
+        'highlow' => 'High + Low-sec',
+        'all' => 'Anywhere',
+    ];
+
     /**
-     * Global routing preference: never plan through low/null-sec systems.
+     * Lowest security status routing may pass through, or null for no limit.
+     * High-sec is 0.5+; the 0.45 threshold matches the in-game rounding.
+     * High+Low keeps low-sec (0.1–0.4) but drops null-sec (≤ 0.0).
      */
-    public function avoidsLowsec(): bool
+    public function minRouteSecurity(): ?float
     {
-        return (bool) ($this->avoid_lowsec ?? true);
+        return match ($this->route_security ?? 'highsec') {
+            'highsec' => 0.45,
+            'highlow' => 0.05,
+            default => null,
+        };
+    }
+
+    public function routeSecurityLabel(): string
+    {
+        return self::ROUTE_SECURITY_LABELS[$this->route_security ?? 'highsec'] ?? 'High-sec only';
     }
 }

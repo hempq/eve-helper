@@ -3,79 +3,48 @@
 namespace App\Services\Farm;
 
 use App\Services\Universe\RouteService;
-use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * Constellation-level farming: sites respawn within the constellation
- * (community consensus), so the play is to claim a quiet constellation and
- * run it in a loop. Ranks nearby constellations and plans the optimal
- * visiting tour over every system in the chosen one.
+ * Plans an optimal visiting tour over an arbitrary set of target systems
+ * (e.g. the best-scoring systems of a region), starting from the pilot's
+ * location: nearest-neighbor construction + 2-opt on real jump distances,
+ * then every leg is expanded into its gate-by-gate flight path. Legs may pass
+ * through systems outside the target set when that is the shortest way — the
+ * objective is minimal total jumps, which also minimizes re-entering systems.
  */
-class ConstellationTourService
+class SystemTourService
 {
     public function __construct(
         private readonly TargetScorerService $scorer,
         private readonly RouteService $routes,
     ) {}
 
-    private bool $avoidUnsafe = false;
+    private ?float $minSecurity = null;
 
     /**
-     * Rank constellations by their member systems' farm scores.
-     *
-     * @param  Collection<int, object>  $scoredSystems  output of TargetScorerService::score()
-     * @return Collection<int, object>
+     * @param  list<int>  $targetSystemIds
+     * @return object{systems: list<object>, fullPath: list<object>, totalJumps: int,
+     *   approachJumps: ?int, revisitCount: int}|null
      */
-    public function rank(Collection $scoredSystems, int $limit = 8): Collection
+    public function tour(int $originSystemId, array $targetSystemIds, ?float $minSecurity = null): ?object
     {
-        return $scoredSystems
-            ->groupBy('constellationId')
-            ->filter(fn (Collection $systems) => $systems->count() >= 2)
-            ->map(fn (Collection $systems) => (object) [
-                'constellationId' => $systems->first()->constellationId,
-                'name' => $systems->first()->constellation,
-                'region' => $systems->first()->region,
-                'systems' => $systems->count(),
-                'deadEnds' => $systems->where('deadEnd', true)->count(),
-                'npcKills' => $systems->sum('npcKills'),
-                'playerKills' => $systems->sum('playerKills'),
-                'distance' => $systems->min('distance'),
-                'avgScore' => round($systems->avg('score'), 1),
-            ])
-            ->sortByDesc('avgScore')
-            ->take($limit)
-            ->values();
-    }
+        $this->minSecurity = $minSecurity;
 
-    /**
-     * Optimal tour over every system of the constellation, starting from the
-     * pilot's location: nearest-neighbor construction + 2-opt improvement on
-     * real jump distances (constellations are small, this is near-exact).
-     *
-     * @return object{systems: list<object>, totalJumps: int, approachJumps: ?int}|null
-     */
-    public function tour(int $originSystemId, int $constellationId, bool $avoidUnsafe = false): ?object
-    {
-        $this->avoidUnsafe = $avoidUnsafe;
+        $targets = array_values(array_unique(array_map('intval', $targetSystemIds)));
+        $targets = array_values(array_diff($targets, [$originSystemId]));
 
-        $members = DB::table('solar_systems')
-            ->where('constellation_id', $constellationId)
-            ->pluck('system_id')
-            ->map(fn ($id) => (int) $id)
-            ->all();
-
-        if ($members === []) {
+        if ($targets === []) {
             return null;
         }
 
-        $nodes = array_values(array_unique([$originSystemId, ...$members]));
-        $distance = $this->distanceMatrix($nodes);
+        $targetSet = array_flip($targets);
+        $distance = $this->distanceMatrix([$originSystemId, ...$targets]);
 
         // Nearest-neighbor from the origin.
-        $tour = [];
+        $order = [];
         $current = $originSystemId;
-        $remaining = array_diff($members, [$originSystemId]);
+        $remaining = $targets;
 
         while ($remaining !== []) {
             $next = null;
@@ -90,23 +59,20 @@ class ConstellationTourService
             }
 
             if ($next === null) {
-                break; // disconnected pocket
+                break; // disconnected under the current security constraint
             }
 
-            $tour[] = $next;
+            $order[] = $next;
             $current = $next;
-            $remaining = array_diff($remaining, [$next]);
+            $remaining = array_values(array_diff($remaining, [$next]));
         }
 
-        if ($tour === []) {
+        if ($order === []) {
             return null;
         }
 
-        $tour = $this->twoOpt($tour, $originSystemId, $distance);
+        $order = $this->twoOpt($order, $originSystemId, $distance);
 
-        // Hydrate with names + live activity, and expand every leg into the
-        // actual flight path — legs may leave the constellation when that is
-        // the shorter way between two members.
         [$npcKills, $shipKills, $podKills] = $this->scorer->killActivity();
         $gateCounts = $this->scorer->gateCounts();
 
@@ -116,13 +82,15 @@ class ConstellationTourService
         $total = 0;
         $approach = null;
 
-        foreach ($tour as $index => $systemId) {
-            $legRoute = $this->routes->route($previous, $systemId, preferSafer: false, avoidUnsafe: $this->avoidUnsafe);
+        foreach ($order as $index => $systemId) {
+            $legRoute = $this->routes->route($previous, $systemId, preferSafer: false, minSecurity: $this->minSecurity);
             $legJumps = $legRoute !== null ? count($legRoute) - 1 : ($distance[$previous][$systemId] ?? null);
 
             if ($legJumps !== null) {
                 $total += $legJumps;
-                $approach ??= $index === 0 ? $legJumps : null;
+                if ($index === 0) {
+                    $approach = $legJumps;
+                }
             }
 
             if ($legRoute !== null) {
@@ -141,8 +109,8 @@ class ConstellationTourService
         }
 
         $meta = DB::table('solar_systems')
-            ->whereIn('system_id', array_unique([...$fullPathIds, ...array_column($systems, 'systemId')]))
-            ->get(['system_id', 'name', 'security', 'constellation_id'])
+            ->whereIn('system_id', array_unique([...$fullPathIds, ...$targets]))
+            ->get(['system_id', 'name', 'security'])
             ->keyBy('system_id');
 
         foreach ($systems as $system) {
@@ -150,26 +118,15 @@ class ConstellationTourService
             $system->security = round((float) ($meta[$system->systemId]->security ?? 0), 1);
         }
 
-        // Full path with out-of-constellation detours and revisits marked —
-        // the fewer of both, the better the loop.
         $seen = [];
         $fullPath = [];
-        $outside = 0;
         $revisits = 0;
-        $inTourStage = false; // approach hops don't count as detours
 
-        foreach ($fullPathIds as $id) {
+        foreach ($fullPathIds as $position => $id) {
             $revisit = isset($seen[$id]);
             $seen[$id] = true;
-            $inConstellation = (int) ($meta[$id]->constellation_id ?? 0) === $constellationId;
 
-            if ($inConstellation) {
-                $inTourStage = true;
-            } elseif ($inTourStage) {
-                $outside++;
-            }
-
-            if ($inTourStage && $revisit) {
+            if ($position > 0 && $revisit) {
                 $revisits++;
             }
 
@@ -177,17 +134,16 @@ class ConstellationTourService
                 'systemId' => $id,
                 'name' => $meta[$id]->name ?? "#{$id}",
                 'security' => round((float) ($meta[$id]->security ?? 0), 1),
-                'inConstellation' => $inConstellation,
+                'isTarget' => isset($targetSet[$id]),
                 'revisit' => $revisit,
             ];
         }
 
         return (object) [
             'systems' => $systems,
+            'fullPath' => $fullPath,
             'totalJumps' => $total,
             'approachJumps' => $approach,
-            'fullPath' => $fullPath,
-            'outsideCount' => $outside,
             'revisitCount' => $revisits,
         ];
     }
@@ -207,15 +163,13 @@ class ConstellationTourService
 
                     continue;
                 }
-
                 if (isset($matrix[$b][$a])) {
                     $matrix[$a][$b] = $matrix[$b][$a];
 
                     continue;
                 }
 
-                $jumps = $this->routes->jumps($a, $b, preferSafer: false, avoidUnsafe: $this->avoidUnsafe);
-
+                $jumps = $this->routes->jumps($a, $b, preferSafer: false, minSecurity: $this->minSecurity);
                 if ($jumps !== null) {
                     $matrix[$a][$b] = $jumps;
                 }

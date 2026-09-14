@@ -69,7 +69,7 @@ class RouteServiceTest extends TestCase
         $service = $this->app->make(RouteService::class);
 
         // With the safe path intact, avoidance changes nothing.
-        $this->assertSame([1, 2, 3], $service->route(1, 3, avoidUnsafe: true));
+        $this->assertSame([1, 2, 3], $service->route(1, 3, minSecurity: 0.45));
 
         // Remove the safe midpoint: only the low-sec path remains, so a
         // high-sec-only route is impossible (not merely penalized).
@@ -77,12 +77,12 @@ class RouteServiceTest extends TestCase
 
         // Fresh instances: the graph is cached per service instance.
         $this->assertSame([1, 4, 3], $this->app->make(RouteService::class)->route(1, 3)); // penalty mode still finds it
-        $this->assertNull($this->app->make(RouteService::class)->route(1, 3, avoidUnsafe: true));
+        $this->assertNull($this->app->make(RouteService::class)->route(1, 3, minSecurity: 0.45));
     }
 
     public function test_distances_from_respects_avoid_unsafe(): void
     {
-        $distances = $this->app->make(RouteService::class)->distancesFrom(1, 5, avoidUnsafe: true);
+        $distances = $this->app->make(RouteService::class)->distancesFrom(1, 5, minSecurity: 0.45);
 
         // DangerMid (4, low-sec) is not entered at all; Target still reached
         // through the safe path.

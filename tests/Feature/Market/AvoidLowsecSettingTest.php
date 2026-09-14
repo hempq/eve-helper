@@ -47,7 +47,7 @@ class AvoidLowsecSettingTest extends TestCase
         $this->assertNull(collect($result['options'])->firstWhere('systemName', 'Jita')->jumps);
 
         // Allowing low-sec finds the 2-jump route.
-        $brave = Character::factory()->create(['avoid_lowsec' => false]);
+        $brave = Character::factory()->create(['route_security' => 'all']);
         $result = $service->compare($brave, [34 => 100], originSystemId: 1);
         $this->assertSame(2, collect($result['options'])->firstWhere('systemName', 'Jita')->jumps);
     }

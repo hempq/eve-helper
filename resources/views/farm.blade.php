@@ -4,7 +4,7 @@
 
 @section('content')
     <h1>Farm advisor</h1>
-    <p class="sub">Target scouting from live activity data, your ratting income, and Thera/Turnur shortcuts.</p>
+    <p class="sub">Pick a region — the whole region gets scored, and the best systems become an optimal tour.</p>
 
     <livewire:farm-advisor :character="$character" />
 

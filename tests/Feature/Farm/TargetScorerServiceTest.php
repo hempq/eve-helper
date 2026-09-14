@@ -2,6 +2,7 @@
 
 namespace Tests\Feature\Farm;
 
+use App\Models\Character;
 use App\Services\Esi\EsiClientInterface;
 use App\Services\Esi\EsiResponse;
 use App\Services\Farm\TargetScorerService;
@@ -19,19 +20,21 @@ class TargetScorerServiceTest extends TestCase
         parent::setUp();
 
         DB::table('regions')->insert([
-            ['region_id' => 1, 'name' => 'Fountain'],   // Serpentis
-            ['region_id' => 2, 'name' => 'Venal'],      // Guristas
+            ['region_id' => 1, 'name' => 'Fountain'],   // Serpentis space
+            ['region_id' => 2, 'name' => 'Domain'],
         ]);
         DB::table('constellations')->insert([
             ['constellation_id' => 1, 'region_id' => 1, 'name' => 'C-A'],
-            ['constellation_id' => 2, 'region_id' => 2, 'name' => 'C-B'],
+            ['constellation_id' => 9, 'region_id' => 2, 'name' => 'Other'],
         ]);
         DB::table('solar_systems')->insert([
-            ['system_id' => 1, 'constellation_id' => 1, 'region_id' => 1, 'name' => 'Home', 'security' => 0.5],
-            ['system_id' => 2, 'constellation_id' => 1, 'region_id' => 1, 'name' => 'QuietNull', 'security' => -0.3],
-            ['system_id' => 3, 'constellation_id' => 1, 'region_id' => 1, 'name' => 'CampedNull', 'security' => -0.2],
-            ['system_id' => 4, 'constellation_id' => 2, 'region_id' => 2, 'name' => 'GuristaLand', 'security' => -0.5],
-            ['system_id' => 9, 'constellation_id' => 1, 'region_id' => 1, 'name' => 'FarAway', 'security' => -0.1],
+            // Fountain, constellation C-A (nullsec):
+            ['system_id' => 1, 'constellation_id' => 1, 'region_id' => 1, 'name' => 'Origin', 'security' => -0.3],
+            ['system_id' => 2, 'constellation_id' => 1, 'region_id' => 1, 'name' => 'Quiet', 'security' => -0.4],
+            ['system_id' => 3, 'constellation_id' => 1, 'region_id' => 1, 'name' => 'Camped', 'security' => -0.2],
+            ['system_id' => 4, 'constellation_id' => 1, 'region_id' => 1, 'name' => 'DeadEnd', 'security' => -0.5],
+            // A different region — must never appear:
+            ['system_id' => 99, 'constellation_id' => 9, 'region_id' => 2, 'name' => 'Elsewhere', 'security' => 0.9],
         ]);
         foreach ([[1, 2], [2, 3], [3, 4]] as [$a, $b]) {
             DB::table('system_jumps')->insert([
@@ -39,83 +42,78 @@ class TargetScorerServiceTest extends TestCase
                 ['from_system_id' => $b, 'to_system_id' => $a],
             ]);
         }
-        // FarAway (9) is not connected at all.
 
         $expires = CarbonImmutable::now()->addHour();
         $esi = $this->mock(EsiClientInterface::class);
         $esi->shouldReceive('get')->with('/universe/system_kills')->andReturn(new EsiResponse([
-            ['system_id' => 2, 'npc_kills' => 400, 'ship_kills' => 0, 'pod_kills' => 0],
-            ['system_id' => 3, 'npc_kills' => 500, 'ship_kills' => 6, 'pod_kills' => 2],
-            ['system_id' => 4, 'npc_kills' => 300, 'ship_kills' => 0, 'pod_kills' => 0],
+            ['system_id' => 2, 'npc_kills' => 300, 'ship_kills' => 0, 'pod_kills' => 0], // active constellation, quiet system
+            ['system_id' => 3, 'npc_kills' => 400, 'ship_kills' => 5, 'pod_kills' => 2], // camped
         ], $expires));
         $esi->shouldReceive('get')->with('/universe/system_jumps')->andReturn(new EsiResponse([
-            ['system_id' => 3, 'ship_jumps' => 900],
+            ['system_id' => 3, 'ship_jumps' => 200],
         ], $expires));
     }
 
-    public function test_quiet_system_in_active_constellation_beats_camped_one(): void
+    private function scorer(): TargetScorerService
     {
-        $targets = $this->app->make(TargetScorerService::class)->score(1, maxJumps: 5);
-
-        $quiet = $targets->firstWhere('name', 'QuietNull');
-        $camped = $targets->firstWhere('name', 'CampedNull');
-
-        // Same constellation => same spawn evidence; the camped one loses on
-        // player kills, own NPC competition and traffic.
-        $this->assertSame($quiet->constellationNpcKills, $camped->constellationNpcKills);
-        $this->assertSame(8, $camped->playerKills);
-        $this->assertGreaterThan($camped->score, $quiet->score);
-
-        // Dead-end detection: GuristaLand hangs on a single gate.
-        $gurista = $targets->firstWhere('name', 'GuristaLand');
-        $this->assertTrue($gurista->deadEnd);
-        $this->assertSame(1, $gurista->gates);
-        $this->assertFalse($quiet->deadEnd);
-
-        // Unreachable system is not listed; origin itself excluded.
-        $this->assertNull($targets->firstWhere('name', 'FarAway'));
-        $this->assertNull($targets->firstWhere('name', 'Home'));
+        return $this->app->make(TargetScorerService::class);
     }
 
-    public function test_own_logged_sites_boost_the_constellation(): void
+    public function test_scores_only_the_chosen_region(): void
     {
-        $character = \App\Models\Character::factory()->create();
-        $scorer = $this->app->make(TargetScorerService::class);
+        $scored = $this->scorer()->scoreRegion(1, originSystemId: 1);
 
-        $without = $scorer->score(1, maxJumps: 5)->firstWhere('name', 'QuietNull');
+        $names = $scored->pluck('name')->all();
+        $this->assertContains('Quiet', $names);
+        $this->assertNotContains('Elsewhere', $names); // other region
+    }
+
+    public function test_quiet_deadend_in_active_constellation_wins_over_camped(): void
+    {
+        $scored = $this->scorer()->scoreRegion(1, originSystemId: 1);
+
+        $quiet = $scored->firstWhere('name', 'Quiet');
+        $camped = $scored->firstWhere('name', 'Camped');
+        $deadEnd = $scored->firstWhere('name', 'DeadEnd');
+
+        // All share the constellation's spawn evidence.
+        $this->assertGreaterThan(0, $quiet->constellationNpcKills);
+        // Camped loses on its own NPC kills, traffic and live danger.
+        $this->assertGreaterThan($camped->score, $quiet->score);
+        $this->assertSame(7, $camped->liveDanger); // 5 ship + 2 pod kills
+
+        // DeadEnd (1 gate, zero kills) gets the conditional dead-end bonus.
+        $this->assertTrue($deadEnd->deadEnd);
+        $this->assertGreaterThan($camped->score, $deadEnd->score);
+    }
+
+    public function test_faction_filter_excludes_wrong_region(): void
+    {
+        // Fountain is Serpentis space -> Guristas filter yields nothing.
+        $this->assertTrue($this->scorer()->scoreRegion(1, faction: 'Guristas')->isEmpty());
+        $this->assertTrue($this->scorer()->scoreRegion(1, faction: 'Serpentis')->isNotEmpty());
+    }
+
+    public function test_security_band_filter(): void
+    {
+        $this->assertTrue($this->scorer()->scoreRegion(1, securityBand: 'highsec')->isEmpty());
+        $this->assertTrue($this->scorer()->scoreRegion(1, securityBand: 'nullsec')->isNotEmpty());
+    }
+
+    public function test_own_logged_sites_raise_the_score(): void
+    {
+        $character = Character::factory()->create();
+        $without = $this->scorer()->scoreRegion(1, $character, originSystemId: 1)->firstWhere('name', 'Quiet');
 
         DB::table('signatures')->insert([
             'character_id' => $character->character_id, 'system_id' => 2,
             'sig_id' => 'AAA-111', 'sig_group' => 'Cosmic Anomaly', 'category' => 'Combat Site',
-            'status' => 'done', 'first_seen' => now()->subDays(2), 'last_seen' => now()->subDays(2),
+            'status' => 'active', 'first_seen' => now()->subDay(), 'last_seen' => now()->subDay(),
         ]);
 
-        $with = $scorer->score(1, maxJumps: 5, character: $character)->firstWhere('name', 'QuietNull');
+        $with = $this->scorer()->scoreRegion(1, $character, originSystemId: 1)->firstWhere('name', 'Quiet');
 
         $this->assertSame(1, $with->ownSites);
-        $this->assertEqualsWithDelta($without->score + 2, $with->score, 0.11);
-    }
-
-    public function test_faction_and_security_filters(): void
-    {
-        $scorer = $this->app->make(TargetScorerService::class);
-
-        $guristas = $scorer->score(1, maxJumps: 5, faction: 'Guristas');
-        $this->assertSame(['GuristaLand'], $guristas->pluck('name')->all());
-
-        $nullOnly = $scorer->score(1, maxJumps: 5, securityBand: 'nullsec');
-        $this->assertNotNull($nullOnly->firstWhere('name', 'QuietNull'));
-        $this->assertNull($nullOnly->firstWhere('name', 'Home'));
-    }
-
-    public function test_extra_edges_extend_the_range(): void
-    {
-        // FarAway connects only through a wormhole edge from Home.
-        $targets = $this->app->make(TargetScorerService::class)
-            ->score(1, maxJumps: 3, extraEdges: [[1, 9]]);
-
-        $far = $targets->firstWhere('name', 'FarAway');
-        $this->assertNotNull($far);
-        $this->assertSame(1, $far->distance);
+        $this->assertGreaterThan($without->score, $with->score);
     }
 }

@@ -2,153 +2,162 @@
 
 namespace App\Services\Farm;
 
-use App\Services\Esi\EsiClientInterface;
-use App\Services\Esi\Exceptions\EsiErrorLimited;
-use App\Services\Esi\Exceptions\EsiRequestFailed;
+use App\Models\Character;
 use App\Services\Universe\RouteService;
 use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\DB;
 
 /**
- * "Where should I go farming?" — scores systems in jump range using public
- * ESI activity data: NPC kills prove sites are being run and respawning,
- * player kills and traffic mean competition and danger. Sites themselves are
- * not exposed by ESI, so proxies are the best any tool can do.
+ * "Where in this region should I farm?" — scores every system of a region
+ * from public activity data. ESI exposes no anomalies/signatures, so proxies
+ * carry the signal:
+ *   - Supply: constellation-averaged NPC kills prove sites spawn & respawn
+ *     there; the pilot's own logged sites are personal ground truth.
+ *   - Vacancy: low in-system NPC kills and low gate traffic mean nobody is
+ *     clearing sites, so unscanned ones pile up — averaged over a history
+ *     window because a single ESI hour is very noisy. Dead-ends amplify this,
+ *     but ONLY when their kill history is near zero (else it is a local's
+ *     ratting home, per explorer guides).
+ *   - Danger: the live ship/pod kill snapshot is a "camp right now" tripwire.
+ * Highsec inverts the emphasis: NPC kills there are polluted by mission and
+ * incursion hubs, so gate traffic becomes the primary vacancy signal.
  */
 class TargetScorerService
 {
+    private const HIGHSEC_LIMIT = 0.45;
+
     public function __construct(
-        private readonly EsiClientInterface $esi,
+        private readonly ActivitySource $source,
         private readonly RouteService $routes,
+        private readonly ActivityRecorder $activity,
     ) {}
 
     /**
-     * Score v2 — "a quiet system in a productive constellation": sites
-     * respawn constellation-wide, so constellation-level NPC activity is
-     * spawn evidence while same-system activity is live competition. The
-     * pilot's own signature journal feeds a personal per-constellation bonus.
-     *
      * @param  'highsec'|'lowsec'|'nullsec'|'any'  $securityBand
-     * @param  list<array{0: int, 1: int}>  $extraEdges
-     * @return Collection<int, object> scored systems, best first
+     * @return Collection<int, object> scored systems in the region, best first
      */
-    public function score(
-        int $originSystemId,
-        int $maxJumps = 10,
-        string $securityBand = 'any',
+    public function scoreRegion(
+        int $regionId,
+        ?Character $character = null,
+        ?float $minSecurity = null,
         ?string $faction = null,
-        array $extraEdges = [],
-        ?\App\Models\Character $character = null,
-        bool $avoidUnsafe = false,
+        string $securityBand = 'any',
+        ?int $originSystemId = null,
     ): Collection {
-        $distances = $this->routes->distancesFrom($originSystemId, $maxJumps, $extraEdges, $avoidUnsafe);
-        unset($distances[$originSystemId]);
+        $systems = DB::table('solar_systems as s')
+            ->join('constellations as c', 'c.constellation_id', '=', 's.constellation_id')
+            ->where('s.region_id', $regionId)
+            ->get(['s.system_id', 's.name', 's.security', 's.constellation_id', 'c.name as constellation']);
 
-        if ($distances === []) {
+        if ($systems->isEmpty()) {
             return collect();
         }
 
-        [$npcKills, $shipKills, $podKills] = $this->killActivity();
-        $traffic = $this->jumpActivity();
+        // Prefer averaged history; fall back to the live snapshot when the
+        // history table is still empty.
+        $avg = $this->activity->averages(72);
+        if ($avg['snapshots'] > 0) {
+            $npcAvg = $avg['npc'];
+            $playersAvg = $avg['players'];
+            $jumpsAvg = $avg['jumps'];
+            $usingHistory = true;
+        } else {
+            [$liveNpc, $liveShip, $livePod] = $this->killActivity();
+            $npcAvg = $liveNpc;
+            $playersAvg = [];
+            foreach ($liveShip as $id => $s) {
+                $playersAvg[$id] = $s + ($livePod[$id] ?? 0);
+            }
+            $jumpsAvg = $this->jumpActivity();
+            $usingHistory = false;
+        }
+
+        // Live snapshot is always the danger tripwire, regardless of history.
+        [, $liveShipKills, $livePodKills] = $this->killActivity();
+
         $gateCounts = $this->gateCounts();
 
-        $factionRegions = $faction !== null
-            ? array_flip(config("eve.factions.{$faction}", []))
-            : null;
+        // Constellation-averaged NPC kills (spawn evidence), over every member.
+        $constNpc = $this->constellationNpcAverage($regionId, $npcAvg);
 
-        $systems = DB::table('solar_systems as s')
-            ->join('regions as r', 'r.region_id', '=', 's.region_id')
-            ->join('constellations as c', 'c.constellation_id', '=', 's.constellation_id')
-            ->whereIn('s.system_id', array_keys($distances))
-            ->get(['s.system_id', 's.name', 's.security', 's.constellation_id',
-                'c.name as constellation', 'r.name as region']);
+        // Personal per-constellation logged-site counts (30 days).
+        $mySites = $character !== null ? $this->ownSites($character) : [];
 
-        // Constellation-level NPC activity per member system: computed over
-        // ALL members (even out of range), since respawns roam the whole
-        // constellation.
-        $constellationIds = $systems->pluck('constellation_id')->unique();
-        $members = DB::table('solar_systems')
-            ->whereIn('constellation_id', $constellationIds)
-            ->get(['system_id', 'constellation_id']);
+        // Distances from the pilot for the small logistics term.
+        $distances = $originSystemId !== null
+            ? $this->routes->distancesFrom($originSystemId, 60, minSecurity: $minSecurity)
+            : [];
 
-        $constNpcPerSystem = [];
-        foreach ($members->groupBy('constellation_id') as $constellationId => $group) {
-            $sum = 0;
-            foreach ($group as $member) {
-                $sum += $npcKills[(int) $member->system_id] ?? 0;
-            }
-            $constNpcPerSystem[$constellationId] = $sum / max(1, $group->count());
-        }
-
-        // Personal evidence: sites the pilot logged per constellation (30d).
-        $mySites = [];
-        if ($character !== null) {
-            $mySites = DB::table('signatures as sig')
-                ->join('solar_systems as ss', 'ss.system_id', '=', 'sig.system_id')
-                ->where('sig.character_id', $character->character_id)
-                ->where('sig.first_seen', '>=', now()->subDays(30))
-                ->selectRaw('ss.constellation_id, COUNT(*) as sites')
-                ->groupBy('ss.constellation_id')
-                ->pluck('sites', 'constellation_id')
-                ->map(fn ($v) => (int) $v)
-                ->all();
-        }
+        $factionRegionOk = $faction === null
+            || in_array(
+                DB::table('regions')->where('region_id', $regionId)->value('name'),
+                config("eve.factions.{$faction}", []),
+                true,
+            );
 
         return $systems
-            ->filter(function ($system) use ($securityBand, $factionRegions) {
+            ->filter(function ($system) use ($securityBand, $factionRegionOk) {
                 $security = (float) $system->security;
-
                 $bandOk = match ($securityBand) {
-                    'highsec' => $security >= 0.45,
-                    'lowsec' => $security > 0.0 && $security < 0.45,
+                    'highsec' => $security >= self::HIGHSEC_LIMIT,
+                    'lowsec' => $security > 0.0 && $security < self::HIGHSEC_LIMIT,
                     'nullsec' => $security <= 0.0,
                     default => true,
                 };
 
-                return $bandOk && ($factionRegions === null || isset($factionRegions[$system->region]));
+                return $bandOk && $factionRegionOk;
             })
-            ->map(function ($system) use ($distances, $npcKills, $shipKills, $podKills, $traffic, $gateCounts, $constNpcPerSystem, $mySites) {
+            ->map(function ($system) use (
+                $npcAvg, $playersAvg, $jumpsAvg, $liveShipKills, $livePodKills,
+                $gateCounts, $constNpc, $mySites, $distances
+            ) {
                 $id = (int) $system->system_id;
                 $constellationId = (int) $system->constellation_id;
-                $npc = $npcKills[$id] ?? 0;
-                $players = ($shipKills[$id] ?? 0) + ($podKills[$id] ?? 0);
-                $jumps = $traffic[$id] ?? 0;
-                $distance = $distances[$id];
-                $gates = $gateCounts[$id] ?? 0;
-                $constNpc = $constNpcPerSystem[$constellationId] ?? 0.0;
-                $ownSites = min(10, $mySites[$constellationId] ?? 0);
+                $security = (float) $system->security;
+                $isHighsec = $security >= self::HIGHSEC_LIMIT;
 
-                // Quiet system in a productive constellation. Pilot presence
-                // is the enemy of standing anomalies: ESI has no pilot
-                // count, so its two proxies — gate traffic and in-system
-                // NPC kills (someone is ratting right there) — both take a
-                // strong logarithmic penalty. Dead-end pockets weigh
-                // heavily: with no through traffic, unscanned combat
-                // anomalies pile up there.
-                $score = 10 * log1p($constNpc)
-                    - 5 * log1p($npc)
-                    - 5 * log1p($jumps)
-                    - 12 * $players
-                    - $distance
-                    + match ($gates) {
-                        1 => 18,
-                        2 => 6,
+                $sysNpc = $npcAvg[$id] ?? 0.0;
+                $traffic = $jumpsAvg[$id] ?? 0.0;
+                $constNpcHere = $constNpc[$constellationId] ?? 0.0;
+                $gates = $gateCounts[$id] ?? 0;
+                $ownSites = min(10, $mySites[$constellationId] ?? 0);
+                $liveDanger = min(20, ($liveShipKills[$id] ?? 0) + ($livePodKills[$id] ?? 0));
+                $distance = $distances[$id] ?? null;
+
+                // Highsec NPC kills are mission/incursion-polluted -> lean on
+                // traffic for vacancy; elsewhere NPC kills are the real
+                // "someone is farming here" signal.
+                [$wNpc, $wJumps] = $isHighsec ? [3.0, 6.0] : [8.0, 3.0];
+
+                $supply = 10 * log1p($constNpcHere) + 3 * log1p($ownSites);
+                $vacancy = -$wNpc * log1p($sysNpc) - $wJumps * log1p($traffic);
+
+                // Dead-end bonus only when the system is genuinely quiet.
+                if ($sysNpc < 1.0) {
+                    $vacancy += match ($gates) {
+                        1 => 12,
+                        2 => 4,
                         default => 0,
-                    }
-                    + 2 * $ownSites;
+                    };
+                }
+
+                $danger = -6 * $liveDanger;
+                $logistics = $distance !== null ? -0.5 * $distance : -20;
+
+                $score = $supply + $vacancy + $danger + $logistics;
 
                 return (object) [
                     'systemId' => $id,
                     'name' => $system->name,
-                    'security' => round((float) $system->security, 1),
+                    'security' => round($security, 1),
                     'constellationId' => $constellationId,
                     'constellation' => $system->constellation,
-                    'region' => $system->region,
                     'distance' => $distance,
-                    'npcKills' => $npc,
-                    'constellationNpcKills' => (int) round($constNpc),
-                    'playerKills' => $players,
-                    'traffic' => $jumps,
+                    'npcKills' => round($sysNpc, 1),
+                    'constellationNpcKills' => round($constNpcHere, 1),
+                    'playerKills' => round($playersAvg[$id] ?? 0, 1),
+                    'liveDanger' => $liveDanger,
+                    'traffic' => round($traffic, 1),
                     'gates' => $gates,
                     'deadEnd' => $gates === 1,
                     'ownSites' => $ownSites,
@@ -156,7 +165,46 @@ class TargetScorerService
                 ];
             })
             ->sortByDesc('score')
-            ->values();
+            ->values()
+            ->tap(fn ($c) => $c->usingHistory = $usingHistory);
+    }
+
+    /**
+     * @param  array<int, float|int>  $npcBySystem
+     * @return array<int, float> constellation id => avg npc kills per member
+     */
+    private function constellationNpcAverage(int $regionId, array $npcBySystem): array
+    {
+        $members = DB::table('solar_systems')
+            ->where('region_id', $regionId)
+            ->get(['system_id', 'constellation_id']);
+
+        $result = [];
+        foreach ($members->groupBy('constellation_id') as $constellationId => $group) {
+            $sum = 0.0;
+            foreach ($group as $member) {
+                $sum += $npcBySystem[(int) $member->system_id] ?? 0;
+            }
+            $result[(int) $constellationId] = $sum / max(1, $group->count());
+        }
+
+        return $result;
+    }
+
+    /**
+     * @return array<int, int> constellation id => logged sites (30d)
+     */
+    private function ownSites(Character $character): array
+    {
+        return DB::table('signatures as sig')
+            ->join('solar_systems as ss', 'ss.system_id', '=', 'sig.system_id')
+            ->where('sig.character_id', $character->character_id)
+            ->where('sig.first_seen', '>=', now()->subDays(30))
+            ->selectRaw('ss.constellation_id, COUNT(*) as sites')
+            ->groupBy('ss.constellation_id')
+            ->pluck('sites', 'constellation_id')
+            ->map(fn ($v) => (int) $v)
+            ->all();
     }
 
     /**
@@ -177,22 +225,7 @@ class TargetScorerService
      */
     public function killActivity(): array
     {
-        try {
-            $rows = $this->esi->get('/universe/system_kills')->data;
-        } catch (EsiErrorLimited|EsiRequestFailed) {
-            return [[], [], []];
-        }
-
-        $npc = $ship = $pod = [];
-
-        foreach ($rows as $row) {
-            $id = (int) $row['system_id'];
-            $npc[$id] = (int) ($row['npc_kills'] ?? 0);
-            $ship[$id] = (int) ($row['ship_kills'] ?? 0);
-            $pod[$id] = (int) ($row['pod_kills'] ?? 0);
-        }
-
-        return [$npc, $ship, $pod];
+        return $this->source->killActivity();
     }
 
     /**
@@ -200,18 +233,6 @@ class TargetScorerService
      */
     public function jumpActivity(): array
     {
-        try {
-            $rows = $this->esi->get('/universe/system_jumps')->data;
-        } catch (EsiErrorLimited|EsiRequestFailed) {
-            return [];
-        }
-
-        $traffic = [];
-
-        foreach ($rows as $row) {
-            $traffic[(int) $row['system_id']] = (int) ($row['ship_jumps'] ?? 0);
-        }
-
-        return $traffic;
+        return $this->source->jumpActivity();
     }
 }

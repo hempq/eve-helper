@@ -75,7 +75,7 @@ class TradeFinderService
                     $jumps = $this->routes->jumps(
                         (int) $hubSystemIds[$src['system']],
                         (int) $hubSystemIds[$dst['system']],
-                        avoidUnsafe: $character->avoidsLowsec(),
+                        minSecurity: $character->minRouteSecurity(),
                     );
                 }
 

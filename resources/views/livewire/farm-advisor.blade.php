@@ -1,17 +1,35 @@
 <div>
     <div class="card" style="margin-bottom: 14px">
-        <h2>Where to farm? <span class="muted" style="text-transform:none; letter-spacing:0">— from {{ $originName }} (your current location)</span></h2>
+        <h2>Where to farm? <span class="muted" style="text-transform:none; letter-spacing:0">— you are in {{ $originName }}</span></h2>
         <p class="muted" style="margin-top: 0; font-size: 13px">
-            ESI does not expose anomalies — no tool can. Proxies do the job: NPC kills prove sites are being run
-            and respawning; player kills &amp; traffic mean competition.
+            ESI does not expose anomalies — no tool can. Score = spawn evidence (constellation NPC kills) × vacancy
+            (few pilots/kills here) − danger.
+            @if ($usingHistory)
+                <span class="ok">Using 72h activity history.</span>
+            @else
+                <span class="gold">Using a single live snapshot — run <span class="mono">eve:record-activity</span> hourly for averages.</span>
+            @endif
         </p>
 
         <div style="display: flex; gap: 10px; flex-wrap: wrap; align-items: center;">
-            <label class="muted" style="display:flex; gap:6px; align-items:center; font-size:13px;">range
-                <select wire:model.live="maxJumps" style="background: var(--surface2); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); padding: 6px 8px; font: inherit;">
-                    @foreach ([5, 10, 15, 20] as $j)<option value="{{ $j }}">{{ $j }} jumps</option>@endforeach
-                </select>
-            </label>
+            <div class="combo" style="min-width: 260px;">
+                <input type="text" wire:model.live.debounce.300ms="regionSearch"
+                       placeholder="Region — type a region or system name" autocomplete="off"
+                       style="width: 100%; background: var(--surface2); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); padding: 7px 11px; font: inherit; font-size: 13px;">
+                @if ($regionResults->isNotEmpty())
+                    <div class="dropdown">
+                        @foreach ($regionResults as $result)
+                            <button class="dd-item" wire:click="pickRegion({{ $result->region_id }})">
+                                <b>{{ $result->name }}</b>
+                                <span class="muted">{{ $result->via_system ? 'via '.$result->via_system : 'region' }}</span>
+                            </button>
+                        @endforeach
+                    </div>
+                @elseif ($searchOpen && mb_strlen(trim($regionSearch)) >= 2)
+                    <div class="dropdown"><div class="dd-item" style="cursor: default; color: var(--muted)">No matching region.</div></div>
+                @endif
+            </div>
+
             <label class="muted" style="display:flex; gap:6px; align-items:center; font-size:13px;">space
                 <select wire:model.live="securityBand" style="background: var(--surface2); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); padding: 6px 8px; font: inherit;">
                     <option value="any">any</option>
@@ -26,10 +44,11 @@
                     @foreach ($factions as $f)<option value="{{ $f }}">{{ $f }}</option>@endforeach
                 </select>
             </label>
-            <label class="muted" style="display:flex; gap:6px; align-items:center; font-size:13px; cursor:pointer;">
-                <input type="checkbox" wire:model.live="useWormholes"> Thera/Turnur shortcuts
+            <label class="muted" style="display:flex; gap:6px; align-items:center; font-size:13px;">tour size
+                <input type="number" wire:model.live.debounce.400ms="tourSize" min="3" max="25"
+                       style="width: 64px; background: var(--surface2); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); padding: 6px 8px; font: inherit;"> systems
             </label>
-            <span wire:loading class="muted">Scanning…</span>
+            <span wire:loading class="muted">Scoring region…</span>
         </div>
 
         @if ($notice)
@@ -37,98 +56,50 @@
         @endif
     </div>
 
-    <div class="cards">
-        <div class="card wide" style="grid-column: 1 / -1;">
-            <h2>Best constellations <span class="muted" style="text-transform:none; letter-spacing:0">— sites respawn constellation-wide: claim a quiet, productive one</span></h2>
-
-            <div class="combo" style="margin-bottom: 12px;">
-                <input type="text" wire:model.live.debounce.300ms="constellationSearch"
-                       placeholder="Plan a tour for any constellation — type to search (e.g. Kimotoro)"
-                       autocomplete="off"
-                       style="width: 100%; background: var(--surface2); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); padding: 7px 11px; font: inherit; font-size: 13px;">
-                @if ($constellationResults->isNotEmpty())
-                    <div class="dropdown">
-                        @foreach ($constellationResults as $result)
-                            <button class="dd-item" wire:click="planTour({{ $result->constellation_id }})">
-                                <b>{{ $result->name }}</b>
-                                <span class="muted">{{ $result->region }}</span>
-                            </button>
-                        @endforeach
-                    </div>
-                @elseif ($searchOpen && mb_strlen(trim($constellationSearch)) >= 2)
-                    <div class="dropdown"><div class="dd-item" style="cursor: default; color: var(--muted)">No matching constellation.</div></div>
-                @endif
-            </div>
-            @if ($constellations->isEmpty())
-                <p class="muted" style="margin: 0">No rankable constellations in range.</p>
-            @else
-                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px;">
-                    @foreach ($constellations as $c)
-                        <button wire:click="planTour({{ $c->constellationId }})"
-                                style="text-align: left; cursor: pointer; border-radius: 8px; padding: 10px 12px; font: inherit; color: var(--ink);
-                                       background: {{ $c->constellationId === $tourConstellationId ? 'var(--surface2)' : 'transparent' }};
-                                       border: 1px solid {{ $c->constellationId === $tourConstellationId ? 'var(--accent)' : 'var(--line)' }};">
-                            <div style="font: 600 14px var(--font-display);">{{ $c->name }} <span class="muted" style="font-weight:400">· {{ $c->region }}</span></div>
-                            <div class="muted num" style="font-size: 12px; margin-top: 2px;">
-                                score <b style="color: var(--accent)">{{ $c->avgScore }}</b> · {{ $c->systems }} sys ·
-                                {{ $c->deadEnds }} dead-end · {{ $c->distance }}j away
-                            </div>
-                            <div class="muted num" style="font-size: 12px;">
-                                NPC {{ number_format($c->npcKills) }}/h · <span class="{{ $c->playerKills > 0 ? 'bad' : '' }}">{{ $c->playerKills }} pk</span>
-                            </div>
-                        </button>
-                    @endforeach
-                </div>
-            @endif
-
-            @if ($tour !== null && $tour->systems !== [])
-                <h2 style="margin-top: 18px">Tour: {{ $tourName }}
+    @if ($regionName === null)
+        <div class="card"><p class="muted" style="margin:0">Pick a region above to score it.</p></div>
+    @elseif ($scored->isEmpty())
+        <div class="card"><p class="muted" style="margin:0">No systems match the filters in {{ $regionName }}.</p></div>
+    @else
+        @if ($tour !== null)
+            <div class="card wide" style="margin-bottom: 14px">
+                <h2>Best {{ count($tour->systems) }} in {{ $regionName }}
                     <span class="muted" style="text-transform:none; letter-spacing:0">
-                        — {{ count($tour->systems) }} systems · {{ $tour->totalJumps }} jumps total
-                        @if ($tour->approachJumps !== null)({{ $tour->approachJumps }} to get there)@endif
+                        — {{ $tour->totalJumps }} jumps total
+                        @if ($tour->approachJumps !== null)({{ $tour->approachJumps }} to reach the first)@endif
+                        @if ($tour->revisitCount > 0) · {{ $tour->revisitCount }} revisit{{ $tour->revisitCount === 1 ? '' : 's' }}@endif
                     </span>
                     <button wire:click="sendTour({{ json_encode(collect($tour->systems)->pluck('systemId')->all()) }})"
                             style="float: right; background: var(--accent); color: var(--bg); border: 0; border-radius: 6px; padding: 5px 14px; cursor: pointer; font: 600 12.5px var(--font-body);">
                         Send tour to game
                     </button>
                 </h2>
-                <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+
+                <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 12px;">
                     @foreach ($tour->systems as $i => $system)
                         @php $secColor = $system->security >= 0.5 ? 'var(--ok)' : ($system->security > 0 ? 'var(--gold)' : 'var(--bad)'); @endphp
                         <span class="chip" @if ($system->playerKills > 0) style="border-color: var(--bad)" @endif>
-                            @if ($system->legJumps !== null && $system->legJumps > 1)
-                                <span class="muted" style="font-size: 11px">+{{ $system->legJumps }}j</span>
-                            @endif
+                            @if ($system->legJumps !== null && $system->legJumps > 1)<span class="muted" style="font-size: 11px">+{{ $system->legJumps }}j</span>@endif
                             <span style="color: {{ $secColor }}" class="num">{{ number_format($system->security, 1) }}</span>
                             <b>{{ $system->name }}</b>
-                            @if ($system->deadEnd)<span title="Dead-end system" style="color: var(--accent)">◖</span>@endif
-                            <span class="muted num" style="font-size: 11px">{{ number_format($system->npcKills) }}npc</span>
-                            @if ($system->playerKills > 0)<span class="bad num" style="font-size: 11px">{{ $system->playerKills }}pk</span>@endif
+                            @if ($system->deadEnd)<span title="Dead-end" style="color: var(--accent)">◖</span>@endif
                         </span>
                         @if ($i < count($tour->systems) - 1)<span class="muted">→</span>@endif
                     @endforeach
                 </div>
 
-                @if (isset($tour->fullPath) && count($tour->fullPath) > 1)
-                    <p class="muted" style="margin: 12px 0 6px; font-size: 12.5px">
-                        Full flight path — gate by gate:
-                        <span class="num">{{ $tour->totalJumps }} jumps</span>
-                        @if ($tour->outsideCount > 0)
-                            · <span class="gold">{{ $tour->outsideCount }} hop{{ $tour->outsideCount === 1 ? '' : 's' }} outside the constellation</span> (that IS the shortest way)
-                        @else
-                            · never leaves the constellation
-                        @endif
-                        @if ($tour->revisitCount > 0)
-                            · <span class="gold">{{ $tour->revisitCount }} revisit{{ $tour->revisitCount === 1 ? '' : 's' }}</span>
-                        @else
-                            · no system visited twice
-                        @endif
+                @if (count($tour->fullPath) > 1)
+                    <p class="muted" style="margin: 0 0 6px; font-size: 12.5px">
+                        Full flight path — gate by gate ({{ $tour->totalJumps }} jumps):
+                        <button wire:click="sendFullPath({{ json_encode(collect($tour->fullPath)->pluck('systemId')->all()) }})"
+                                style="margin-left: 6px; background: none; border: 1px solid var(--accent); color: var(--accent); border-radius: 6px; padding: 2px 10px; cursor: pointer; font: 600 11.5px var(--font-body);">
+                            Import exact path to game
+                        </button>
                     </p>
                     <div style="display: flex; flex-wrap: wrap; gap: 4px; align-items: center;">
                         @foreach ($tour->fullPath as $i => $hop)
                             @php $secColor = $hop->security >= 0.5 ? 'var(--ok)' : ($hop->security > 0 ? 'var(--gold)' : 'var(--bad)'); @endphp
-                            <span class="chip" style="font-size: 11px; padding: 1px 8px;
-                                @if (! $hop->inConstellation) border-style: dashed; opacity: .75; @endif">
+                            <span class="chip" style="font-size: 11px; padding: 1px 8px; @if (! $hop->isTarget) opacity: .6; border-style: dashed; @endif">
                                 <span style="color: {{ $secColor }}" class="num">{{ number_format($hop->security, 1) }}</span>
                                 {{ $hop->name }}@if ($hop->revisit)<span class="gold" title="Passing through again"> ↩</span>@endif
                             </span>
@@ -136,54 +107,54 @@
                         @endforeach
                     </div>
                 @endif
-            @endif
-        </div>
+            </div>
+        @endif
 
-        <div class="card wide" style="grid-column: 1 / -1;">
-            <h2>Candidate systems</h2>
-            @if ($targets->isEmpty())
-                <p class="muted" style="margin: 0">No systems match the filters in range — widen the range or relax the filters.</p>
-            @else
-                <div class="tablewrap">
-                    <table>
+        <div class="card wide">
+            <h2>{{ $regionName }} — all {{ $scored->count() }} systems ranked</h2>
+            <div class="tablewrap">
+                <table>
+                    <tr>
+                        <th>System</th><th>Sec</th><th>Constellation</th>
+                        <th class="r" title="Jumps from your location">Jumps</th>
+                        <th class="r" title="NPC kills/h in this system (avg)">Sys NPC</th>
+                        <th class="r" title="Constellation avg NPC kills/h — spawn evidence">Const NPC</th>
+                        <th class="r" title="Gate traffic/h (avg)">Traffic</th>
+                        <th class="r" title="Live player kills — danger">⚠</th>
+                        <th class="r" title="Your logged sites in the constellation (30d)">Yours</th>
+                        <th class="r">Score</th><th></th>
+                    </tr>
+                    @foreach ($scored->take(60) as $s)
                         <tr>
-                            <th>System</th><th>Sec</th><th>Constellation</th><th>Region</th>
-                            <th class="r">Jumps</th><th class="r" title="NPC kills in this system (live competition)">Sys NPC</th>
-                            <th class="r" title="NPC kills per system across the whole constellation (spawn evidence)">Const NPC</th>
-                            <th class="r">Player kills/h</th>
-                            <th class="r">Traffic</th><th class="r" title="Your logged sites in this constellation, 30 days">Yours</th>
-                            <th class="r">Score</th><th></th>
+                            <td><b>{{ $s->name }}</b>
+                                @if ($s->deadEnd)<span class="chip" style="border-color: var(--accent); color: var(--accent); font-size: 10.5px; padding: 0 6px;">dead-end</span>@endif
+                            </td>
+                            <td class="num" style="color: {{ $s->security >= 0.5 ? 'var(--ok)' : ($s->security > 0 ? 'var(--gold)' : 'var(--bad)') }}">{{ number_format($s->security, 1) }}</td>
+                            <td class="muted">{{ $s->constellation }}</td>
+                            <td class="r num">{{ $s->distance ?? '—' }}</td>
+                            <td class="r num muted">{{ number_format($s->npcKills, 1) }}</td>
+                            <td class="r num ok">{{ number_format($s->constellationNpcKills, 1) }}</td>
+                            <td class="r num muted">{{ number_format($s->traffic, 1) }}</td>
+                            <td class="r num {{ $s->liveDanger > 0 ? 'bad' : 'muted' }}">{{ $s->liveDanger ?: '—' }}</td>
+                            <td class="r num {{ $s->ownSites > 0 ? 'gold' : 'muted' }}">{{ $s->ownSites ?: '—' }}</td>
+                            <td class="r num"><b>{{ $s->score }}</b></td>
+                            <td>
+                                <button wire:click="setDestination({{ $s->systemId }})" title="Set destination"
+                                        style="background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 6px; padding: 2px 9px; cursor: pointer; font: 500 12px var(--font-body);">➤</button>
+                            </td>
                         </tr>
-                        @foreach ($targets as $target)
-                            <tr>
-                                <td><b>{{ $target->name }}</b>
-                                    @if ($target->deadEnd)<span class="chip" style="border-color: var(--accent); color: var(--accent); font-size: 10.5px; padding: 0 6px;" title="Dead-end: one gate, no through traffic">dead-end</span>@endif
-                                </td>
-                                <td class="num" style="color: {{ $target->security >= 0.5 ? 'var(--ok)' : ($target->security > 0 ? 'var(--gold)' : 'var(--bad)') }}">{{ number_format($target->security, 1) }}</td>
-                                <td class="muted">{{ $target->constellation }}</td>
-                                <td class="muted">{{ $target->region }}</td>
-                                <td class="r num">{{ $target->distance }}</td>
-                                <td class="r num muted">{{ number_format($target->npcKills) }}</td>
-                                <td class="r num ok">{{ number_format($target->constellationNpcKills) }}</td>
-                                <td class="r num {{ $target->playerKills > 0 ? 'bad' : 'muted' }}">{{ $target->playerKills }}</td>
-                                <td class="r num muted">{{ number_format($target->traffic) }}</td>
-                                <td class="r num {{ $target->ownSites > 0 ? 'gold' : 'muted' }}">{{ $target->ownSites ?: '—' }}</td>
-                                <td class="r num"><b>{{ $target->score }}</b></td>
-                                <td>
-                                    <button wire:click="setDestination({{ $target->systemId }})" title="Set destination in game"
-                                            style="background: none; border: 1px solid var(--line); color: var(--muted); border-radius: 6px; padding: 2px 9px; cursor: pointer; font: 500 12px var(--font-body);">➤</button>
-                                </td>
-                            </tr>
-                        @endforeach
-                    </table>
-                </div>
+                    @endforeach
+                </table>
+            </div>
+            @if ($scored->count() > 60)
+                <p class="muted" style="margin-bottom: 0">… and {{ $scored->count() - 60 }} more systems.</p>
             @endif
         </div>
 
-        <div class="card">
-            <h2>Ratting sessions <span class="muted" style="text-transform:none; letter-spacing:0">(bounty ticks, ~20 min each)</span></h2>
+        <div class="card" style="margin-top: 14px">
+            <h2>Ratting sessions <span class="muted" style="text-transform:none; letter-spacing:0">(bounty ticks)</span></h2>
             @if ($sessions->isEmpty())
-                <p class="muted" style="margin: 0">No bounty payouts in the wallet journal yet — go shoot some rats and this fills up.</p>
+                <p class="muted" style="margin: 0">No bounty payouts logged yet.</p>
             @else
                 <div class="tablewrap">
                     <table>
@@ -201,40 +172,14 @@
                 </div>
                 @if ($dailyTotals->isNotEmpty())
                     @php $max = max(1, $dailyTotals->max()); @endphp
-                    <div style="display: flex; gap: 3px; align-items: flex-end; height: 60px; margin-top: 14px;">
+                    <div style="display: flex; gap: 3px; align-items: flex-end; height: 50px; margin-top: 12px;">
                         @foreach ($dailyTotals as $day => $isk)
                             <div title="{{ $day }}: {{ number_format($isk) }} ISK"
                                  style="flex: 1; background: var(--accent-dim); border-top: 2px solid var(--accent); height: {{ max(4, round($isk / $max * 100)) }}%;"></div>
                         @endforeach
                     </div>
-                    <p class="muted" style="font-size: 11.5px; margin: 4px 0 0">Daily bounty income, last {{ $dailyTotals->count() }} active days.</p>
                 @endif
             @endif
         </div>
-
-        <div class="card">
-            <h2>Thera / Turnur shortcuts <span class="muted" style="text-transform:none; letter-spacing:0">(EVE-Scout live)</span></h2>
-            @if ($shortcuts->isEmpty())
-                <p class="muted" style="margin: 0">EVE-Scout data unavailable right now.</p>
-            @else
-                <div class="tablewrap">
-                    <table>
-                        <tr><th>Hub</th><th>Connects to</th><th>Region</th><th class="r">Ship size</th><th class="r">Time left</th></tr>
-                        @foreach ($shortcuts as $connection)
-                            <tr>
-                                <td>{{ $connection->hubName }}</td>
-                                <td><b>{{ $connection->systemName }}</b></td>
-                                <td class="muted">{{ $connection->region }}</td>
-                                <td class="r muted">{{ $connection->maxShipSize ?? '—' }}</td>
-                                <td class="r num {{ ($connection->remainingHours ?? 99) < 4 ? 'bad' : 'muted' }}">
-                                    {{ $connection->remainingHours !== null ? round($connection->remainingHours).'h' : '—' }}
-                                </td>
-                            </tr>
-                        @endforeach
-                    </table>
-                </div>
-                <p class="muted" style="font-size: 11.5px; margin: 8px 0 0">Tick "Thera/Turnur shortcuts" above to include these as extra edges in the range scan.</p>
-            @endif
-        </div>
-    </div>
+    @endif
 </div>

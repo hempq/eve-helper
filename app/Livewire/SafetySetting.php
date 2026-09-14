@@ -7,16 +7,20 @@ use Illuminate\Contracts\View\View;
 use Livewire\Component;
 
 /**
- * Global routing preference toggle: high-sec-only planning on/off.
+ * Global routing preference: cycles High-sec only → High + Low → Anywhere.
  */
 class SafetySetting extends Component
 {
     public Character $character;
 
-    public function toggle(): void
+    private const CYCLE = ['highsec' => 'highlow', 'highlow' => 'all', 'all' => 'highsec'];
+
+    public function cycle(): void
     {
+        $current = $this->character->route_security ?? 'highsec';
+
         $this->character->forceFill([
-            'avoid_lowsec' => ! $this->character->avoidsLowsec(),
+            'route_security' => self::CYCLE[$current] ?? 'highsec',
         ])->save();
 
         // Routing-dependent components on the page must recalculate.
