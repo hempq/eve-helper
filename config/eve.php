@@ -92,6 +92,10 @@ return [
         ],
         'default_hub' => 60003760,
 
+        // A detour jump on a selling trip must earn at least this much extra
+        // net ISK, or the stop is dropped from the tour.
+        'isk_per_jump' => (float) env('EVE_ISK_PER_JUMP', 2_000_000),
+
         // Skill type ids driving trade fees.
         'accounting_skill_id' => 16622,
         'broker_relations_skill_id' => 3446,
