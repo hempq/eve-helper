@@ -14,6 +14,8 @@ final readonly class AppraisalItem
         public float $instantNet,
         public float $orderNet,
         public ?float $avgDailyVolume = null,
+        /** @var ?object{sampleCount: int, minPrice: float, p20Price: float, medianPrice: float} */
+        public ?object $contractPrice = null,
     ) {}
 
     /**

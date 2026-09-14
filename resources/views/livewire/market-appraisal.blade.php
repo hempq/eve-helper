@@ -82,7 +82,13 @@ Gistii B-Type Small Shield Booster"
                                 @switch($item->recommendation())
                                     @case('sell-order') <span class="chip up">sell order</span> @break
                                     @case('instant') <span class="chip">instant</span> @break
-                                    @case('contract') <span class="chip gold" title="Barely trades on the market ({{ number_format($item->avgDailyVolume, 1) }}/day) — sell via contract">contract</span> @break
+                                    @case('contract')
+                                        @if ($item->contractPrice !== null)
+                                            <span class="chip gold" title="Barely trades on the market ({{ number_format($item->avgDailyVolume, 1) }}/day) — sell via contract. {{ $item->contractPrice->sampleCount }} public contracts listed: competitive ask (20th pct) {{ number_format($item->contractPrice->p20Price) }}, median {{ number_format($item->contractPrice->medianPrice) }} ISK">contract ~{{ $item->contractPrice->p20Price >= 1_000_000 ? number_format($item->contractPrice->p20Price / 1_000_000, 1).'M' : number_format($item->contractPrice->p20Price) }}</span>
+                                        @else
+                                            <span class="chip gold" title="Barely trades on the market ({{ number_format($item->avgDailyVolume, 1) }}/day) — sell via contract">contract</span>
+                                        @endif
+                                    @break
                                     @default <span class="chip gold" title="No orders at this hub — check contracts / other hubs">no market</span>
                                 @endswitch
                             </td>

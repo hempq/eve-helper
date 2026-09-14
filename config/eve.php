@@ -94,6 +94,13 @@ return [
         // Liquidity/fill-time lookup via ESI market history (extra API calls).
         'history_enabled' => (bool) env('EVE_MARKET_HISTORY', true),
 
+        // EVE Ref public-contracts snapshot feeding the contract_prices table
+        // (Adam4EVE has no public contract API).
+        'contract_snapshot_url' => env(
+            'EVE_CONTRACT_SNAPSHOT_URL',
+            'https://data.everef.net/public-contracts/public-contracts-latest.v2.tar.bz2',
+        ),
+
         // The five classic trade hubs: station id => metadata.
         'hubs' => [
             60003760 => ['name' => 'Jita IV-4 CNAP', 'system' => 'Jita', 'region_id' => 10000002],

@@ -15,6 +15,7 @@ class AppraisalService
         private readonly PriceProviderInterface $prices,
         private readonly TradeFeeService $fees,
         private readonly MarketHistoryService $history,
+        private readonly ContractPriceService $contracts,
     ) {}
 
     public function appraise(Character $character, int $stationId, string $text): AppraisalResult
@@ -68,6 +69,8 @@ class AppraisalService
         $salesTax = $this->fees->salesTaxRate($character);
         $brokerFee = $this->fees->brokerFeeRate($character);
 
+        $contractPrices = $this->contracts->prices(array_keys($typeQuantities));
+
         $regionId = config('eve.market.history_enabled') ? $this->regionOfStation($stationId) : null;
         // Look up liquidity for the most valuable items only (each is a
         // cached ESI history call).
@@ -101,6 +104,7 @@ class AppraisalService
                 // Listing a sell order: sales tax + broker fee.
                 orderNet: $sell * $quantity * (1 - $salesTax - $brokerFee),
                 avgDailyVolume: $avgDailyVolume,
+                contractPrice: $contractPrices[$typeId] ?? null,
             );
         }
 

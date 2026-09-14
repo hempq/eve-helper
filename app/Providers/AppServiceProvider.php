@@ -55,6 +55,11 @@ class AppServiceProvider extends ServiceProvider
             userAgent: config('eve.esi.user_agent'),
         ));
 
+        $this->app->singleton(\App\Services\Market\ContractPriceService::class, fn () => new \App\Services\Market\ContractPriceService(
+            userAgent: config('eve.esi.user_agent'),
+            snapshotUrl: config('eve.market.contract_snapshot_url'),
+        ));
+
         $this->app->singleton(\App\Services\Killmails\LossHistoryService::class, fn (Application $app) => new \App\Services\Killmails\LossHistoryService(
             cache: $app->make(Cache::class),
             esi: $app->make(EsiClientInterface::class),
