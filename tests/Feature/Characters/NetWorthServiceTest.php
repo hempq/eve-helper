@@ -42,12 +42,13 @@ class NetWorthServiceTest extends TestCase
 
         $worth = $this->app->make(NetWorthService::class)->record($character);
 
+        // No skills -> 7.5% sales tax nets out of liquidation values.
         $this->assertEqualsWithDelta(10_000_000, $worth->wallet, 0.1);
-        $this->assertEqualsWithDelta(5_000, $worth->assetsValue, 0.1);        // 1000 × 5 buy
-        $this->assertEqualsWithDelta(3_000, $worth->sellOrdersValue, 0.1);    // 500 × 6
+        $this->assertEqualsWithDelta(4_625, $worth->assetsValue, 0.1);        // 1000 × 5 buy × 0.925
+        $this->assertEqualsWithDelta(2_775, $worth->sellOrdersValue, 0.1);    // 500 × 6 × 0.925
         $this->assertEqualsWithDelta(1_000, $worth->buyEscrow, 0.1);          // 100 × 10
         $this->assertEqualsWithDelta(100_000_000, $worth->implantsValue, 0.1);
-        $this->assertEqualsWithDelta(110_009_000, $worth->total, 0.1);
+        $this->assertEqualsWithDelta(110_008_400, $worth->total, 0.1);
 
         $this->assertDatabaseHas('net_worth_snapshots', [
             'character_id' => $character->character_id,

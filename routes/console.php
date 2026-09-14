@@ -14,8 +14,9 @@ Schedule::command('eve:check-alerts')->everyThirtyMinutes()->withoutOverlapping(
 // cron; the eve:record-activity guard makes double runs harmless).
 Schedule::command('eve:record-activity')->hourly()->withoutOverlapping();
 
-// Refresh the trade finder's hub order books twice a day.
-Schedule::command('eve:scan-hubs')->twiceDaily(9, 19)->withoutOverlapping();
+// Refresh the hub order books (trade finder, station trading, fill-time
+// depth). The parallel scan takes seconds, so every 4 hours is cheap.
+Schedule::command('eve:scan-hubs')->everyFourHours()->withoutOverlapping();
 
 // Contract asking prices (deadspace/faction loot) from the EVE Ref
 // public-contracts snapshot.

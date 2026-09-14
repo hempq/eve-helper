@@ -31,9 +31,11 @@ class TradeProfitService
             ->get(['type_id', 'quantity', 'unit_price', 'date']);
 
         if ($sells->isEmpty()) {
+            $feesPaid = $this->fees($character, $since);
+
             return (object) [
-                'items' => collect(), 'realizedProfit' => 0.0,
-                'lootRevenue' => 0.0, 'feesPaid' => $this->fees($character, $since), 'days' => $days,
+                'items' => collect(), 'realizedProfit' => 0.0, 'lootRevenue' => 0.0,
+                'feesPaid' => $feesPaid, 'netProfit' => -$feesPaid, 'days' => $days,
             ];
         }
 
@@ -103,11 +105,16 @@ class TradeProfitService
             return $entry;
         })->sortByDesc('profit')->values();
 
+        $realized = (float) $items->sum('profit');
+        $feesPaid = $this->fees($character, $since);
+
         return (object) [
             'items' => $items,
-            'realizedProfit' => (float) $items->sum('profit'),
+            'realizedProfit' => $realized,
             'lootRevenue' => $lootRevenue,
-            'feesPaid' => $this->fees($character, $since),
+            'feesPaid' => $feesPaid,
+            // The actual bottom line: everything earned minus every fee paid.
+            'netProfit' => $realized + $lootRevenue - $feesPaid,
             'days' => $days,
         ];
     }

@@ -4,16 +4,23 @@ namespace App\Services\Market;
 
 use App\Services\Esi\EsiClientInterface;
 use Carbon\CarbonImmutable;
+use Illuminate\Http\Client\Pool;
+use Illuminate\Http\Client\Response;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Facades\Http;
 
 /**
- * Full order-book scan of a hub: streams the region's order pages from ESI
- * (ETag-cached page by page), keeps only orders sitting at the hub station,
- * and stores best bid/ask with depth per type. Heavy (~50-300 pages per
- * region) — run from the eve:scan-hubs command, not from web requests.
+ * Full order-book scan of a hub (~50-300 region pages). Page 1 goes through
+ * the caching ESI client to learn the page count; the rest are fetched in
+ * parallel batches (ESI explicitly allows concurrent requests — this cuts a
+ * multi-minute scan to seconds). Any page that fails in the pool is retried
+ * sequentially through the ESI client, so a scan is always complete or
+ * throws. Run from the eve:scan-hubs command, not from web requests.
  */
 class HubPriceScanService
 {
+    private const POOL_SIZE = 10;
+
     public function __construct(private readonly EsiClientInterface $esi) {}
 
     /**
@@ -23,21 +30,8 @@ class HubPriceScanService
     {
         $best = []; // typeId => ['bid','ask','bid_vol','ask_vol']
 
-        $page = 1;
-        $pages = 1;
-
-        do {
-            $response = $this->esi->get("/markets/{$regionId}/orders", [
-                'order_type' => 'all',
-                'page' => $page,
-            ]);
-            $pages = $response->pages;
-
-            if ($onPage !== null) {
-                $onPage($page, $pages);
-            }
-
-            foreach ($response->data as $order) {
+        $collect = function (iterable $orders) use (&$best, $stationId): void {
+            foreach ($orders as $order) {
                 if ((int) $order['location_id'] !== $stationId) {
                     continue;
                 }
@@ -58,9 +52,49 @@ class HubPriceScanService
                 }
                 unset($entry);
             }
+        };
 
-            $page++;
-        } while ($page <= $pages);
+        $first = $this->esi->get("/markets/{$regionId}/orders", ['order_type' => 'all', 'page' => 1]);
+        $collect($first->data);
+        $pages = $first->pages;
+
+        if ($onPage !== null) {
+            $onPage(1, $pages);
+        }
+
+        $remaining = $pages >= 2 ? range(2, $pages) : [];
+
+        foreach (array_chunk($remaining, self::POOL_SIZE) as $batch) {
+            $responses = Http::pool(fn (Pool $pool) => array_map(
+                fn (int $page) => $pool->as((string) $page)
+                    ->withHeaders([
+                        'User-Agent' => config('eve.esi.user_agent'),
+                        'X-Compatibility-Date' => config('eve.esi.compatibility_date'),
+                        'Accept' => 'application/json',
+                    ])
+                    ->timeout(30)
+                    ->get(config('eve.esi.base_url')."/markets/{$regionId}/orders", [
+                        'order_type' => 'all',
+                        'page' => $page,
+                    ]),
+                $batch,
+            ));
+
+            foreach ($batch as $page) {
+                $response = $responses[(string) $page] ?? null;
+
+                if ($response instanceof Response && $response->successful()) {
+                    $collect($response->json() ?? []);
+                } else {
+                    // Fall back through the rate-limit-aware ESI client.
+                    $collect($this->esi->get("/markets/{$regionId}/orders", ['order_type' => 'all', 'page' => $page])->data);
+                }
+
+                if ($onPage !== null) {
+                    $onPage($page, $pages);
+                }
+            }
+        }
 
         $now = CarbonImmutable::now();
         $rows = [];

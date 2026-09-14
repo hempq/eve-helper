@@ -54,8 +54,9 @@ class IndustryFeaturesTest extends TestCase
         $agent = $summary->agents->first();
         $this->assertSame('Mechanical Engineering', $agent->science);
         $this->assertSame(3, $agent->datacores);
-        $this->assertEqualsWithDelta(240_000, $agent->value, 0.1);
-        $this->assertEqualsWithDelta(20_000, $agent->iskPerDay, 0.1); // 25/100 × 80k
+        // 80k buy × 0.925 sales tax (no skills) = 74k per datacore.
+        $this->assertEqualsWithDelta(222_000, $agent->value, 0.1);
+        $this->assertEqualsWithDelta(18_500, $agent->iskPerDay, 0.1); // 25/100 × 74k
     }
 
     public function test_planetary_colonies_report_extractor_expiry(): void
@@ -110,7 +111,7 @@ class IndustryFeaturesTest extends TestCase
 
         $summary = $this->app->make(MiningLedgerService::class)->summary($character);
 
-        $this->assertEqualsWithDelta(100_000, $summary->totalValue, 0.1); // only the in-window row
+        $this->assertEqualsWithDelta(92_500, $summary->totalValue, 0.1); // in-window row × 0.925 tax
         $this->assertSame('Veldspar', $summary->ores->first()->name);
     }
 

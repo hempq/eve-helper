@@ -25,6 +25,7 @@ class ResearchAgentService
     public function __construct(
         private readonly EsiClientInterface $esi,
         private readonly PriceProviderInterface $prices,
+        private readonly \App\Services\Market\TradeFeeService $fees,
     ) {}
 
     /**
@@ -60,11 +61,13 @@ class ResearchAgentService
             ->pluck('type_id', 'name');
 
         $priceMap = $this->prices->prices(self::JITA, $datacoreTypes->values()->map(fn ($id) => (int) $id)->all());
+        $salesTax = $this->fees->salesTaxRate($character);
 
-        $agents = collect($rows)->map(function (array $row) use ($agentMeta, $skillNames, $datacoreTypes, $priceMap) {
+        $agents = collect($rows)->map(function (array $row) use ($agentMeta, $skillNames, $datacoreTypes, $priceMap, $salesTax) {
             $science = $skillNames[(int) $row['skill_type_id']] ?? ('Skill #'.$row['skill_type_id']);
             $datacoreTypeId = $datacoreTypes["Datacore - {$science}"] ?? null;
-            $price = $datacoreTypeId !== null ? ($priceMap[(int) $datacoreTypeId]['buy'] ?? 0.0) : 0.0;
+            // Net of the sales tax a Jita dump would pay.
+            $price = ($datacoreTypeId !== null ? ($priceMap[(int) $datacoreTypeId]['buy'] ?? 0.0) : 0.0) * (1 - $salesTax);
 
             $points = (float) ($row['remainder_points'] ?? 0)
                 + (float) ($row['points_per_day'] ?? 0)

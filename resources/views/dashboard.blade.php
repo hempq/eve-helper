@@ -54,6 +54,12 @@
         <livewire:income-card :character="$character" lazy />
     </div>
 
+    <livewire:earnings-card :character="$character" lazy />
+
+    @if (\App\Models\Character::count() > 1)
+        <livewire:account-overview-card lazy />
+    @endif
+
     <div class="cards" style="margin-top: 24px">
         <livewire:planetary-card :character="$character" lazy />
         <livewire:industry-jobs-card :character="$character" lazy />

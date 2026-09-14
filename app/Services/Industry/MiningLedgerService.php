@@ -21,6 +21,7 @@ class MiningLedgerService
     public function __construct(
         private readonly EsiClientInterface $esi,
         private readonly PriceProviderInterface $prices,
+        private readonly \App\Services\Market\TradeFeeService $fees,
     ) {}
 
     /**
@@ -49,11 +50,13 @@ class MiningLedgerService
 
         $names = DB::table('item_types')->whereIn('type_id', array_keys($byType))->pluck('name', 'type_id');
         $priceMap = $this->prices->prices(self::JITA, array_keys($byType));
+        $salesTax = $this->fees->salesTaxRate($character);
 
         $ores = collect($byType)->map(fn (int $quantity, int $typeId) => (object) [
             'name' => $names[$typeId] ?? ('Type #'.$typeId),
             'quantity' => $quantity,
-            'value' => $quantity * ($priceMap[$typeId]['buy'] ?? 0.0),
+            // Net of the sales tax a dump into buy orders would pay.
+            'value' => $quantity * ($priceMap[$typeId]['buy'] ?? 0.0) * (1 - $salesTax),
         ])->sortByDesc('value')->values();
 
         return (object) [

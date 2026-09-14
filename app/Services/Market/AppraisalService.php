@@ -71,6 +71,13 @@ class AppraisalService
 
         $contractPrices = $this->contracts->prices(array_keys($typeQuantities));
 
+        // Scanned order-book depth at this hub: how many units are already
+        // listed ahead of a new sell order.
+        $askDepth = $typeQuantities === [] ? collect() : DB::table('hub_prices')
+            ->where('station_id', $stationId)
+            ->whereIn('type_id', array_keys($typeQuantities))
+            ->pluck('ask_volume', 'type_id');
+
         $regionId = config('eve.market.history_enabled') ? $this->regionOfStation($stationId) : null;
         // Look up liquidity for the most valuable items only (each is a
         // cached ESI history call).
@@ -105,6 +112,7 @@ class AppraisalService
                 orderNet: $sell * $quantity * (1 - $salesTax - $brokerFee),
                 avgDailyVolume: $avgDailyVolume,
                 contractPrice: $contractPrices[$typeId] ?? null,
+                queueAhead: isset($askDepth[$typeId]) ? (int) $askDepth[$typeId] : null,
             );
         }
 

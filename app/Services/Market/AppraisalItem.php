@@ -16,12 +16,15 @@ final readonly class AppraisalItem
         public ?float $avgDailyVolume = null,
         /** @var ?object{sampleCount: int, minPrice: float, p20Price: float, medianPrice: float} */
         public ?object $contractPrice = null,
+        /** Units already listed in sell orders at this hub (the queue ahead of you). */
+        public ?int $queueAhead = null,
     ) {}
 
     /**
-     * Optimistic days to sell the stack as a market order (you'd capture at
-     * most the whole daily volume; realistically less). Null when there is no
-     * volume data.
+     * Days to sell the stack as a market order. With scanned order-book
+     * depth the whole standing sell queue is assumed to clear before your
+     * listing does (an upper bound); without it, just your own stack against
+     * the daily volume (optimistic). Null when there is no volume data.
      */
     public function daysToSell(): ?float
     {
@@ -29,7 +32,7 @@ final readonly class AppraisalItem
             return null;
         }
 
-        return $this->quantity / $this->avgDailyVolume;
+        return (($this->queueAhead ?? 0) + $this->quantity) / $this->avgDailyVolume;
     }
 
     public function recommendation(): string

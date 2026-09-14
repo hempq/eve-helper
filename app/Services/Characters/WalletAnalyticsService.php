@@ -41,6 +41,57 @@ class WalletAnalyticsService
         'daily_goal_payouts' => 'Login rewards',
     ];
 
+    /** Coarse buckets for the daily earnings chart. */
+    private const CHART_BUCKETS = [
+        'Bounties (ratting)' => 'Bounties',
+        'Missions' => 'Missions',
+        'Market trading' => 'Market sales',
+        'Contracts' => 'Contracts',
+    ];
+
+    /**
+     * Daily income series for the earnings chart (income side only — what
+     * actually landed in the wallet each day).
+     *
+     * @return object{days: Collection<int, object{date: string, buckets: array<string, float>, total: float}>,
+     *   buckets: list<string>, total: float}
+     */
+    public function dailyIncome(Character $character, int $days = 14): object
+    {
+        $rows = DB::table('wallet_journal')
+            ->where('character_id', $character->character_id)
+            ->where('date', '>=', now()->subDays($days)->startOfDay())
+            ->where('amount', '>', 0)
+            ->get(['ref_type', 'amount', 'date']);
+
+        $series = [];
+        for ($i = $days - 1; $i >= 0; $i--) {
+            $series[now()->subDays($i)->toDateString()] = [];
+        }
+
+        foreach ($rows as $row) {
+            $day = substr((string) $row->date, 0, 10);
+            if (! array_key_exists($day, $series)) {
+                continue;
+            }
+            $fine = self::BUCKETS[$row->ref_type] ?? 'Other';
+            $bucket = self::CHART_BUCKETS[$fine] ?? 'Other';
+            $series[$day][$bucket] = ($series[$day][$bucket] ?? 0.0) + (float) $row->amount;
+        }
+
+        $daysOut = collect($series)->map(fn (array $buckets, string $date) => (object) [
+            'date' => $date,
+            'buckets' => $buckets,
+            'total' => (float) array_sum($buckets),
+        ])->values();
+
+        return (object) [
+            'days' => $daysOut,
+            'buckets' => [...array_values(array_unique(array_values(self::CHART_BUCKETS))), 'Other'],
+            'total' => (float) $daysOut->sum('total'),
+        ];
+    }
+
     /**
      * @return object{income: Collection<int, object{bucket: string, amount: float}>,
      *   spending: Collection<int, object{bucket: string, amount: float}>,

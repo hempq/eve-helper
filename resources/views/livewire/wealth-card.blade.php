@@ -29,6 +29,6 @@
             <tr><td class="muted">Buy-order escrow</td><td class="r num">{{ number_format($worth->buyEscrow) }}</td></tr>
             <tr><td class="muted">Implants (active clone)</td><td class="r num">{{ number_format($worth->implantsValue) }}</td></tr>
         </table>
-        <p class="muted" style="font-size:12.5px; margin-bottom:0">Valued conservatively at Jita buy — snapshotted daily.</p>
+        <p class="muted" style="font-size:12.5px; margin-bottom:0">Valued conservatively at Jita buy, net of your sales tax — snapshotted daily.</p>
     @endif
 </div>

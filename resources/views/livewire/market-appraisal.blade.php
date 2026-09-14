@@ -64,7 +64,8 @@ Gistii B-Type Small Shield Booster"
                     <tr>
                         <th>Item</th><th class="r">Qty</th>
                         <th class="r">Buy (5%)</th><th class="r">Sell (5%)</th>
-                        <th class="r">Instant net</th><th class="r">Order net</th><th class="r">Fill time</th><th>Advice</th>
+                        <th class="r">Instant net</th><th class="r">Order net</th>
+                        <th class="r" title="Days for a sell order to fill: (units already listed at this hub + yours) / daily volume">Fill time</th><th>Advice</th>
                     </tr>
                     @foreach ($result->items as $item)
                         <tr>

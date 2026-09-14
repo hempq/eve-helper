@@ -16,7 +16,10 @@ class NetWorthService
 {
     private const JITA = 60003760;
 
-    public function __construct(private readonly PriceProviderInterface $prices) {}
+    public function __construct(
+        private readonly PriceProviderInterface $prices,
+        private readonly \App\Services\Market\TradeFeeService $fees,
+    ) {}
 
     /**
      * @return object{wallet: float, assetsValue: float, sellOrdersValue: float,
@@ -42,10 +45,16 @@ class NetWorthService
             ...$implantTypes->map(fn ($id) => (int) $id),
         ]);
 
+        // Liquidation is what the wallet would actually receive: dumping
+        // into buy orders pays sales tax, and goods already in sell orders
+        // will pay it on fill (their broker fee is sunk).
+        $salesTax = $this->fees->salesTaxRate($character);
+
         $assetsValue = 0.0;
         foreach ($assetQty as $typeId => $qty) {
             $assetsValue += ($prices[(int) $typeId]['buy'] ?? 0.0) * (int) $qty;
         }
+        $assetsValue *= 1 - $salesTax;
 
         $implantsValue = 0.0;
         foreach ($implantTypes as $typeId) {
@@ -56,9 +65,10 @@ class NetWorthService
             ->where('character_id', $character->character_id)
             ->get(['is_buy_order', 'price', 'volume_remain']);
 
-        // Sell orders hold goods (valued at ask); buy orders hold escrowed ISK.
+        // Sell orders hold goods (valued at ask, net of the sales tax due on
+        // fill); buy orders hold escrowed ISK.
         $sellOrdersValue = (float) $orders->where('is_buy_order', false)
-            ->sum(fn ($o) => $o->price * $o->volume_remain);
+            ->sum(fn ($o) => $o->price * $o->volume_remain) * (1 - $salesTax);
         $buyEscrow = (float) $orders->where('is_buy_order', true)
             ->sum(fn ($o) => $o->price * $o->volume_remain);
 

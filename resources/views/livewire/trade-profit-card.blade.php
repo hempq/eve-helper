@@ -14,6 +14,7 @@
             <span class="chip {{ $result->realizedProfit >= 0 ? 'up' : 'down' }}"><b>flipped: {{ number_format($result->realizedProfit / 1_000_000, 1) }}M</b></span>
             <span class="chip gold" title="Sales with no recorded purchase — loot, LP-store output, old stock. Revenue only; cost unknown.">loot/other sales: {{ number_format($result->lootRevenue / 1_000_000, 1) }}M</span>
             <span class="chip down" title="Transaction tax + broker fees paid in the window (wallet journal)">fees: {{ number_format($result->feesPaid / 1_000_000, 1) }}M</span>
+            <span class="chip {{ $result->netProfit >= 0 ? 'up' : 'down' }}" title="Flipped profit + loot revenue − every tax and broker fee paid"><b>net after fees: {{ number_format($result->netProfit / 1_000_000, 1) }}M</b></span>
         </div>
 
         @if ($result->items->isNotEmpty())
