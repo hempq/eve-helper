@@ -24,7 +24,7 @@
 
         <table>
             <tr><td class="muted">Wallet</td><td class="r num">{{ number_format($worth->wallet) }}</td></tr>
-            <tr><td class="muted" title="Everything in hangars/cargo at the Jita buy (5%) price — what it would fetch if dumped today">Assets (Jita buy)</td><td class="r num">{{ number_format($worth->assetsValue) }}</td></tr>
+            <tr><td class="muted" title="Everything in hangars/cargo at the Jita buy (5%) price — what it would fetch if dumped today">Assets (Jita buy / contract ask)</td><td class="r num">{{ number_format($worth->assetsValue) }}</td></tr>
             <tr><td class="muted">Goods in sell orders</td><td class="r num">{{ number_format($worth->sellOrdersValue) }}</td></tr>
             <tr><td class="muted">Buy-order escrow</td><td class="r num">{{ number_format($worth->buyEscrow) }}</td></tr>
             <tr><td class="muted">Implants (active clone)</td><td class="r num">{{ number_format($worth->implantsValue) }}</td></tr>

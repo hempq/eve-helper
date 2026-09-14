@@ -38,11 +38,14 @@ class AppServiceProvider extends ServiceProvider
 
         $this->app->singleton(AccessTokenProvider::class, AccessTokenManager::class);
 
-        $this->app->singleton(PriceProviderInterface::class, fn (Application $app) => new FuzzworkPriceProvider(
-            cache: $app->make(Cache::class),
-            baseUrl: config('eve.market.fuzzwork_url'),
-            userAgent: config('eve.esi.user_agent'),
-            cacheSeconds: (int) config('eve.market.price_cache_seconds'),
+        $this->app->singleton(PriceProviderInterface::class, fn (Application $app) => new \App\Services\Market\CompositePriceProvider(
+            market: new FuzzworkPriceProvider(
+                cache: $app->make(Cache::class),
+                baseUrl: config('eve.market.fuzzwork_url'),
+                userAgent: config('eve.esi.user_agent'),
+                cacheSeconds: (int) config('eve.market.price_cache_seconds'),
+            ),
+            contracts: $app->make(\App\Services\Market\ContractPriceService::class),
         ));
 
         $this->app->singleton(TradeFeeService::class, fn () => new TradeFeeService(
