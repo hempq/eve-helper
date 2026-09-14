@@ -74,6 +74,10 @@ class TargetScorerService
         // Live snapshot is always the danger tripwire, regardless of history.
         [, $liveShipKills, $livePodKills] = $this->killActivity();
 
+        // Backlog/surge trends need most of a week of snapshots; until then
+        // every system scores without the trend term.
+        $trends = $usingHistory ? $this->activity->trends() : ['ready' => false, 'systems' => []];
+
         $gateCounts = $this->gateCounts();
 
         // Constellation-averaged NPC kills (spawn evidence), over every member.
@@ -110,7 +114,7 @@ class TargetScorerService
             })
             ->map(function ($system) use (
                 $npcAvg, $playersAvg, $jumpsAvg, $liveShipKills, $livePodKills,
-                $gateCounts, $constNpc, $mySites, $recentlyCleared, $distances
+                $gateCounts, $constNpc, $mySites, $recentlyCleared, $distances, $trends
             ) {
                 $id = (int) $system->system_id;
                 $constellationId = (int) $system->constellation_id;
@@ -154,7 +158,25 @@ class TargetScorerService
 
                 $logistics = $distance !== null ? -0.5 * $distance : -20;
 
-                $score = $supply + $vacancy + $trueSec + $logistics;
+                // Backlog: a system usually ratted hard (spawns proven) but
+                // quiet for the last half-day has uncleared sites piling up.
+                // Surge: activity well above its own baseline means someone
+                // is farming it out right now.
+                $trend = null;
+                $trendBonus = 0.0;
+                $t = $trends['systems'][$id] ?? null;
+
+                if ($t !== null && $trends['ready']) {
+                    if ($t->baseline >= 3 && $t->ratio <= 0.5) {
+                        $trend = 'backlog';
+                        $trendBonus = 8 * log1p($t->baseline) * (1 - $t->ratio);
+                    } elseif ($t->ratio >= 2 && $t->recentNorm >= 3) {
+                        $trend = 'surging';
+                        $trendBonus = -4 * log1p($t->recentNorm - $t->baseline);
+                    }
+                }
+
+                $score = $supply + $vacancy + $trueSec + $logistics + $trendBonus;
 
                 // Danger is a tripwire, not a tax: any live PvP kill right now
                 // vetoes the system below every safe one.
@@ -177,6 +199,7 @@ class TargetScorerService
                     'gates' => $gates,
                     'deadEnd' => $gates === 1,
                     'ownSites' => $ownSites,
+                    'trend' => $trend,
                     'score' => round($score, 1),
                 ];
             })

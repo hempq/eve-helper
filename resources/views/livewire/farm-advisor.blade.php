@@ -128,6 +128,8 @@
                         <tr>
                             <td><b>{{ $s->name }}</b>
                                 @if ($s->deadEnd)<span class="chip" style="border-color: var(--accent); color: var(--accent); font-size: 10.5px; padding: 0 6px;">dead-end</span>@endif
+                                @if ($s->trend === 'backlog')<span class="chip gold" title="Usually ratted hard but quiet for the last half-day — uncleared sites are piling up" style="font-size: 10.5px; padding: 0 6px;">backlog</span>@endif
+                                @if ($s->trend === 'surging')<span class="chip down" title="Activity well above this system's own baseline — someone is farming it right now" style="font-size: 10.5px; padding: 0 6px;">busy now</span>@endif
                             </td>
                             <td class="num" style="color: {{ $s->security >= 0.5 ? 'var(--ok)' : ($s->security > 0 ? 'var(--gold)' : 'var(--bad)') }}">{{ number_format($s->security, 1) }}</td>
                             <td class="muted">{{ $s->constellation }}</td>

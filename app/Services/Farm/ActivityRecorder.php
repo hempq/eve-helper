@@ -11,6 +11,13 @@ use Illuminate\Support\Facades\DB;
  */
 class ActivityRecorder
 {
+    private const BASELINE_HOURS = 168;
+
+    private const RECENT_HOURS = 12;
+
+    /** ~5 days of hourly snapshots. */
+    private const MIN_BASELINE_SNAPSHOTS = 120;
+
     public function __construct(private readonly ActivitySource $source) {}
 
     /**
@@ -50,6 +57,58 @@ class ActivityRecorder
         DB::table('system_activity')->where('recorded_at', '<', now()->subDays(7))->delete();
 
         return count($rows);
+    }
+
+    /**
+     * Backlog/surge trends: the week-long NPC-kill baseline versus the last
+     * ~12 hours, with the recent window normalized by the global activity
+     * level (the hour-of-day player wave lifts and drops every system
+     * together, so the global ratio is the diurnal correction). A system far
+     * below its own baseline right now has anomalies piling up (backlog); one
+     * far above it is being farmed right now.
+     *
+     * @return array{ready: bool, systems: array<int, object{baseline: float,
+     *   recentNorm: float, ratio: float}>}
+     */
+    public function trends(): array
+    {
+        $base = $this->averages(self::BASELINE_HOURS);
+
+        // Need most of a week of snapshots for a trustworthy baseline.
+        if ($base['snapshots'] < self::MIN_BASELINE_SNAPSHOTS) {
+            return ['ready' => false, 'systems' => []];
+        }
+
+        $recent = $this->averages(self::RECENT_HOURS);
+
+        if ($recent['snapshots'] === 0) {
+            return ['ready' => false, 'systems' => []];
+        }
+
+        // Diurnal correction, clamped so a dead quiet (or booming) cluster
+        // hour cannot blow the ratio up.
+        $globalBase = array_sum($base['npc']);
+        $factor = $globalBase > 0
+            ? max(0.25, min(4.0, array_sum($recent['npc']) / $globalBase))
+            : 1.0;
+
+        $systems = [];
+
+        foreach ($base['npc'] as $id => $baseline) {
+            if ($baseline <= 0) {
+                continue;
+            }
+
+            $recentNorm = ($recent['npc'][$id] ?? 0.0) / $factor;
+
+            $systems[$id] = (object) [
+                'baseline' => $baseline,
+                'recentNorm' => $recentNorm,
+                'ratio' => $recentNorm / $baseline,
+            ];
+        }
+
+        return ['ready' => true, 'systems' => $systems];
     }
 
     /**

@@ -59,6 +59,42 @@ class TargetScorerServiceTest extends TestCase
         return $this->app->make(TargetScorerService::class);
     }
 
+    public function test_backlog_trend_boosts_a_recently_quiet_ratting_system(): void
+    {
+        // A full week of hourly history: Quiet (2) and Camped (3) both rat at
+        // 50 NPC/h, plus a big stable rest-of-universe system (99) so the
+        // global diurnal factor stays ~1. In the last 12h Quiet goes silent
+        // (backlog) while Camped keeps ratting.
+        $rows = [];
+        for ($age = 167; $age >= 0; $age--) {
+            $at = now()->subHours($age)->startOfHour();
+            $rows[] = ['system_id' => 2, 'npc_kills' => $age < 12 ? 0 : 50, 'ship_kills' => 0, 'pod_kills' => 0, 'ship_jumps' => 0, 'recorded_at' => $at];
+            $rows[] = ['system_id' => 3, 'npc_kills' => 50, 'ship_kills' => 0, 'pod_kills' => 0, 'ship_jumps' => 0, 'recorded_at' => $at];
+            $rows[] = ['system_id' => 99, 'npc_kills' => 1000, 'ship_kills' => 0, 'pod_kills' => 0, 'ship_jumps' => 0, 'recorded_at' => $at];
+        }
+        foreach (array_chunk($rows, 500) as $chunk) {
+            DB::table('system_activity')->insert($chunk);
+        }
+
+        $scored = $this->scorer()->scoreRegion(1)->keyBy('systemId');
+
+        $this->assertSame('backlog', $scored[2]->trend);
+        $this->assertNull($scored[3]->trend);
+        // The backlog bonus must outweigh their otherwise similar profiles.
+        $this->assertGreaterThan($scored[3]->score, $scored[2]->score);
+    }
+
+    public function test_trend_stays_null_without_a_week_of_history(): void
+    {
+        DB::table('system_activity')->insert([
+            ['system_id' => 2, 'npc_kills' => 50, 'ship_kills' => 0, 'pod_kills' => 0, 'ship_jumps' => 0, 'recorded_at' => now()->startOfHour()],
+        ]);
+
+        $scored = $this->scorer()->scoreRegion(1)->keyBy('systemId');
+
+        $this->assertNull($scored[2]->trend);
+    }
+
     public function test_scores_only_the_chosen_region(): void
     {
         $scored = $this->scorer()->scoreRegion(1, originSystemId: 1);
