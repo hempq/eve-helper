@@ -27,6 +27,7 @@ class Character extends Model
             'last_remap_date' => 'immutable_datetime',
             'accrued_remap_cooldown_date' => 'immutable_datetime',
             'last_synced_at' => 'immutable_datetime',
+            'last_clone_jump_date' => 'immutable_datetime',
         ];
     }
 

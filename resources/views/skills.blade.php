@@ -10,6 +10,8 @@
         @endif
     </p>
 
+    <livewire:skill-economy :character="$character" />
+
     @foreach ($groups as $group)
         <div class="card" style="margin-bottom: 14px">
             <h2>{{ $group->name }}

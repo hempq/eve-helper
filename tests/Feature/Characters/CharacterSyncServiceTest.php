@@ -59,6 +59,16 @@ class CharacterSyncServiceTest extends TestCase
             ->andReturn(new EsiResponse([10216, 10217], $expires));
 
         $esi->shouldReceive('get')
+            ->with("/characters/{$id}/clones", [], $character)
+            ->andReturn(new EsiResponse([
+                'last_clone_jump_date' => '2026-09-10T08:00:00Z',
+                'jump_clones' => [
+                    ['jump_clone_id' => 1, 'name' => 'Hisec learning', 'location_id' => 60003760,
+                        'location_type' => 'station', 'implants' => [10216, 10217]],
+                ],
+            ], $expires));
+
+        $esi->shouldReceive('get')
             ->with("/characters/{$id}/wallet", [], $character)
             ->andReturn(new EsiResponse([12_345_678.90], $expires));
 
@@ -132,6 +142,11 @@ class CharacterSyncServiceTest extends TestCase
         $this->assertEqualsCanonicalizing([10216, 10217], array_map(intval(...), $implants));
 
         $this->assertEqualsWithDelta(12_345_678.90, (float) $character->wallet_balance, 0.01);
+
+        $clone = DB::table('character_clones')->where('character_id', $character->character_id)->first();
+        $this->assertSame('Hisec learning', $clone->name);
+        $this->assertSame([10216, 10217], json_decode($clone->implants, true));
+        $this->assertSame('2026-09-10 08:00:00', $character->last_clone_jump_date->toDateTimeString());
 
         $assets = DB::table('character_assets')->where('character_id', $character->character_id)->get();
         $this->assertCount(2, $assets);

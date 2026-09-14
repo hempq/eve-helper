@@ -28,6 +28,7 @@ class CharacterSyncService
         $this->syncSkillQueue($character);
         $this->syncAttributes($character);
         $this->syncImplants($character);
+        $this->syncClones($character);
         $this->syncWallet($character);
         $this->syncWalletJournal($character);
         $this->syncAssets($character);
@@ -170,6 +171,34 @@ class CharacterSyncService
         if (is_numeric($balance)) {
             $character->forceFill(['wallet_balance' => (float) $balance])->save();
         }
+    }
+
+    private function syncClones(Character $character): void
+    {
+        $data = $this->esi->get("/characters/{$character->character_id}/clones", [], $character)->data;
+
+        $rows = array_map(fn (array $clone) => [
+            'character_id' => $character->character_id,
+            'jump_clone_id' => $clone['jump_clone_id'],
+            'name' => $clone['name'] ?? null,
+            'location_id' => $clone['location_id'],
+            'location_type' => $clone['location_type'],
+            'implants' => json_encode($clone['implants'] ?? []),
+        ], $data['jump_clones'] ?? []);
+
+        DB::transaction(function () use ($character, $rows, $data) {
+            DB::table('character_clones')->where('character_id', $character->character_id)->delete();
+
+            if ($rows !== []) {
+                DB::table('character_clones')->insert($rows);
+            }
+
+            $character->forceFill([
+                'last_clone_jump_date' => isset($data['last_clone_jump_date'])
+                    ? CarbonImmutable::parse($data['last_clone_jump_date'])
+                    : null,
+            ])->save();
+        });
     }
 
     private function syncImplants(Character $character): void
