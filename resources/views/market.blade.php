@@ -12,6 +12,8 @@
 
     <livewire:contracts-card :character="$character" />
 
+    <livewire:lp-store :character="$character" />
+
     <div style="margin-top: 24px">
         <livewire:market-appraisal :character="$character" />
     </div>
