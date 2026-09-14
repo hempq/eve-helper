@@ -23,6 +23,11 @@ class TargetScorerService
     ) {}
 
     /**
+     * Score v2 — "a quiet system in a productive constellation": sites
+     * respawn constellation-wide, so constellation-level NPC activity is
+     * spawn evidence while same-system activity is live competition. The
+     * pilot's own signature journal feeds a personal per-constellation bonus.
+     *
      * @param  'highsec'|'lowsec'|'nullsec'|'any'  $securityBand
      * @param  list<array{0: int, 1: int}>  $extraEdges
      * @return Collection<int, object> scored systems, best first
@@ -33,6 +38,7 @@ class TargetScorerService
         string $securityBand = 'any',
         ?string $faction = null,
         array $extraEdges = [],
+        ?\App\Models\Character $character = null,
     ): Collection {
         $distances = $this->routes->distancesFrom($originSystemId, $maxJumps, $extraEdges);
         unset($distances[$originSystemId]);
@@ -43,6 +49,7 @@ class TargetScorerService
 
         [$npcKills, $shipKills, $podKills] = $this->killActivity();
         $traffic = $this->jumpActivity();
+        $gateCounts = $this->gateCounts();
 
         $factionRegions = $faction !== null
             ? array_flip(config("eve.factions.{$faction}", []))
@@ -52,7 +59,39 @@ class TargetScorerService
             ->join('regions as r', 'r.region_id', '=', 's.region_id')
             ->join('constellations as c', 'c.constellation_id', '=', 's.constellation_id')
             ->whereIn('s.system_id', array_keys($distances))
-            ->get(['s.system_id', 's.name', 's.security', 'c.name as constellation', 'r.name as region']);
+            ->get(['s.system_id', 's.name', 's.security', 's.constellation_id',
+                'c.name as constellation', 'r.name as region']);
+
+        // Constellation-level NPC activity per member system: computed over
+        // ALL members (even out of range), since respawns roam the whole
+        // constellation.
+        $constellationIds = $systems->pluck('constellation_id')->unique();
+        $members = DB::table('solar_systems')
+            ->whereIn('constellation_id', $constellationIds)
+            ->get(['system_id', 'constellation_id']);
+
+        $constNpcPerSystem = [];
+        foreach ($members->groupBy('constellation_id') as $constellationId => $group) {
+            $sum = 0;
+            foreach ($group as $member) {
+                $sum += $npcKills[(int) $member->system_id] ?? 0;
+            }
+            $constNpcPerSystem[$constellationId] = $sum / max(1, $group->count());
+        }
+
+        // Personal evidence: sites the pilot logged per constellation (30d).
+        $mySites = [];
+        if ($character !== null) {
+            $mySites = DB::table('signatures as sig')
+                ->join('solar_systems as ss', 'ss.system_id', '=', 'sig.system_id')
+                ->where('sig.character_id', $character->character_id)
+                ->where('sig.first_seen', '>=', now()->subDays(30))
+                ->selectRaw('ss.constellation_id, COUNT(*) as sites')
+                ->groupBy('ss.constellation_id')
+                ->pluck('sites', 'constellation_id')
+                ->map(fn ($v) => (int) $v)
+                ->all();
+        }
 
         return $systems
             ->filter(function ($system) use ($securityBand, $factionRegions) {
@@ -67,30 +106,48 @@ class TargetScorerService
 
                 return $bandOk && ($factionRegions === null || isset($factionRegions[$system->region]));
             })
-            ->map(function ($system) use ($distances, $npcKills, $shipKills, $podKills, $traffic) {
+            ->map(function ($system) use ($distances, $npcKills, $shipKills, $podKills, $traffic, $gateCounts, $constNpcPerSystem, $mySites) {
                 $id = (int) $system->system_id;
+                $constellationId = (int) $system->constellation_id;
                 $npc = $npcKills[$id] ?? 0;
                 $players = ($shipKills[$id] ?? 0) + ($podKills[$id] ?? 0);
                 $jumps = $traffic[$id] ?? 0;
                 $distance = $distances[$id];
+                $gates = $gateCounts[$id] ?? 0;
+                $constNpc = $constNpcPerSystem[$constellationId] ?? 0.0;
+                $ownSites = min(10, $mySites[$constellationId] ?? 0);
 
-                // Activity proves respawning sites; competition and danger
-                // subtract; nearby beats far.
-                $score = 10 * log1p($npc)
+                // Quiet system in a productive constellation: constellation
+                // activity is spawn evidence, same-system activity is live
+                // competition; danger, traffic and distance subtract;
+                // dead-end pockets and personally proven ground add.
+                $score = 10 * log1p($constNpc)
+                    - 4 * log1p($npc)
                     - 12 * $players
                     - $jumps / 50
-                    - $distance;
+                    - $distance
+                    + match ($gates) {
+                        1 => 10,
+                        2 => 4,
+                        default => 0,
+                    }
+                    + 2 * $ownSites;
 
                 return (object) [
                     'systemId' => $id,
                     'name' => $system->name,
                     'security' => round((float) $system->security, 1),
+                    'constellationId' => $constellationId,
                     'constellation' => $system->constellation,
                     'region' => $system->region,
                     'distance' => $distance,
                     'npcKills' => $npc,
+                    'constellationNpcKills' => (int) round($constNpc),
                     'playerKills' => $players,
                     'traffic' => $jumps,
+                    'gates' => $gates,
+                    'deadEnd' => $gates === 1,
+                    'ownSites' => $ownSites,
                     'score' => round($score, 1),
                 ];
             })
@@ -99,9 +156,22 @@ class TargetScorerService
     }
 
     /**
+     * @return array<int, int> system id => number of stargate connections
+     */
+    public function gateCounts(): array
+    {
+        return DB::table('system_jumps')
+            ->selectRaw('from_system_id, COUNT(*) as gates')
+            ->groupBy('from_system_id')
+            ->pluck('gates', 'from_system_id')
+            ->map(fn ($g) => (int) $g)
+            ->all();
+    }
+
+    /**
      * @return array{0: array<int,int>, 1: array<int,int>, 2: array<int,int>}
      */
-    private function killActivity(): array
+    public function killActivity(): array
     {
         try {
             $rows = $this->esi->get('/universe/system_kills')->data;
@@ -124,7 +194,7 @@ class TargetScorerService
     /**
      * @return array<int, int>
      */
-    private function jumpActivity(): array
+    public function jumpActivity(): array
     {
         try {
             $rows = $this->esi->get('/universe/system_jumps')->data;

@@ -6,6 +6,7 @@ use App\Models\Character;
 use App\Services\Esi\EsiClientInterface;
 use App\Services\Esi\Exceptions\EsiErrorLimited;
 use App\Services\Esi\Exceptions\EsiRequestFailed;
+use App\Services\Farm\ConstellationTourService;
 use App\Services\Farm\RattingSessionService;
 use App\Services\Farm\TargetScorerService;
 use App\Services\Universe\EveScoutService;
@@ -25,7 +26,30 @@ class FarmAdvisor extends Component
 
     public bool $useWormholes = false;
 
+    public ?int $tourConstellationId = null;
+
     public ?string $notice = null;
+
+    public function planTour(int $constellationId): void
+    {
+        $this->tourConstellationId = $constellationId;
+    }
+
+    public function sendTour(array $systemIds, EsiClientInterface $esi): void
+    {
+        try {
+            foreach (array_values($systemIds) as $i => $systemId) {
+                $esi->post('/ui/autopilot/waypoint', [
+                    'destination_id' => (int) $systemId,
+                    'add_to_beginning' => 'false',
+                    'clear_other_waypoints' => $i === 0 ? 'true' : 'false',
+                ], $this->character);
+            }
+            $this->notice = 'Tour ('.count($systemIds).' waypoints) sent to the EVE client. Good hunting o7';
+        } catch (EsiErrorLimited|EsiRequestFailed $e) {
+            $this->notice = 'Could not set waypoints ('.$e->getMessage().')';
+        }
+    }
 
     public function setDestination(int $systemId, EsiClientInterface $esi): void
     {
@@ -47,24 +71,41 @@ class FarmAdvisor extends Component
         TargetScorerService $scorer,
         RattingSessionService $ratting,
         EveScoutService $eveScout,
+        ConstellationTourService $tours,
     ): View {
         [$originId, $originName] = $this->origin($esi);
 
         $this->maxJumps = max(1, min(25, $this->maxJumps));
 
-        $targets = $originId !== null
+        $scored = $originId !== null
             ? $scorer->score(
                 $originId,
                 $this->maxJumps,
                 in_array($this->securityBand, ['highsec', 'lowsec', 'nullsec'], true) ? $this->securityBand : 'any',
                 $this->faction !== '' ? $this->faction : null,
                 $this->useWormholes ? $eveScout->edges() : [],
-            )->take(25)
+                $this->character,
+            )
             : collect();
+
+        $constellations = $tours->rank($scored);
+
+        // Default the tour to the best-ranked constellation.
+        if ($this->tourConstellationId === null && $constellations->isNotEmpty()) {
+            $this->tourConstellationId = $constellations->first()->constellationId;
+        }
+
+        $tour = ($originId !== null && $this->tourConstellationId !== null)
+            ? $tours->tour($originId, $this->tourConstellationId)
+            : null;
 
         return view('livewire.farm-advisor', [
             'originName' => $originName,
-            'targets' => $targets,
+            'targets' => $scored->take(25),
+            'constellations' => $constellations,
+            'tour' => $tour,
+            'tourName' => $constellations->firstWhere('constellationId', $this->tourConstellationId)?->name
+                ?? \Illuminate\Support\Facades\DB::table('constellations')->where('constellation_id', $this->tourConstellationId)->value('name'),
             'sessions' => $ratting->sessions($this->character)->take(15),
             'dailyTotals' => $ratting->dailyTotals($this->character),
             'factions' => array_keys(config('eve.factions')),

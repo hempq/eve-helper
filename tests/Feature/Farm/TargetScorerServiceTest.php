@@ -53,19 +53,47 @@ class TargetScorerServiceTest extends TestCase
         ], $expires));
     }
 
-    public function test_quiet_active_system_beats_camped_one(): void
+    public function test_quiet_system_in_active_constellation_beats_camped_one(): void
     {
         $targets = $this->app->make(TargetScorerService::class)->score(1, maxJumps: 5);
 
-        $this->assertSame('QuietNull', $targets->first()->name);
-
+        $quiet = $targets->firstWhere('name', 'QuietNull');
         $camped = $targets->firstWhere('name', 'CampedNull');
+
+        // Same constellation => same spawn evidence; the camped one loses on
+        // player kills, own NPC competition and traffic.
+        $this->assertSame($quiet->constellationNpcKills, $camped->constellationNpcKills);
         $this->assertSame(8, $camped->playerKills);
-        $this->assertLessThan($targets->first()->score, $camped->score);
+        $this->assertGreaterThan($camped->score, $quiet->score);
+
+        // Dead-end detection: GuristaLand hangs on a single gate.
+        $gurista = $targets->firstWhere('name', 'GuristaLand');
+        $this->assertTrue($gurista->deadEnd);
+        $this->assertSame(1, $gurista->gates);
+        $this->assertFalse($quiet->deadEnd);
 
         // Unreachable system is not listed; origin itself excluded.
         $this->assertNull($targets->firstWhere('name', 'FarAway'));
         $this->assertNull($targets->firstWhere('name', 'Home'));
+    }
+
+    public function test_own_logged_sites_boost_the_constellation(): void
+    {
+        $character = \App\Models\Character::factory()->create();
+        $scorer = $this->app->make(TargetScorerService::class);
+
+        $without = $scorer->score(1, maxJumps: 5)->firstWhere('name', 'QuietNull');
+
+        DB::table('signatures')->insert([
+            'character_id' => $character->character_id, 'system_id' => 2,
+            'sig_id' => 'AAA-111', 'sig_group' => 'Cosmic Anomaly', 'category' => 'Combat Site',
+            'status' => 'done', 'first_seen' => now()->subDays(2), 'last_seen' => now()->subDays(2),
+        ]);
+
+        $with = $scorer->score(1, maxJumps: 5, character: $character)->firstWhere('name', 'QuietNull');
+
+        $this->assertSame(1, $with->ownSites);
+        $this->assertEqualsWithDelta($without->score + 2, $with->score, 0.11);
     }
 
     public function test_faction_and_security_filters(): void

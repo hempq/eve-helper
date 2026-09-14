@@ -39,6 +39,60 @@
 
     <div class="cards">
         <div class="card wide" style="grid-column: 1 / -1;">
+            <h2>Best constellations <span class="muted" style="text-transform:none; letter-spacing:0">— sites respawn constellation-wide: claim a quiet, productive one</span></h2>
+            @if ($constellations->isEmpty())
+                <p class="muted" style="margin: 0">No rankable constellations in range.</p>
+            @else
+                <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 10px;">
+                    @foreach ($constellations as $c)
+                        <button wire:click="planTour({{ $c->constellationId }})"
+                                style="text-align: left; cursor: pointer; border-radius: 8px; padding: 10px 12px; font: inherit; color: var(--ink);
+                                       background: {{ $c->constellationId === $tourConstellationId ? 'var(--surface2)' : 'transparent' }};
+                                       border: 1px solid {{ $c->constellationId === $tourConstellationId ? 'var(--accent)' : 'var(--line)' }};">
+                            <div style="font: 600 14px var(--font-display);">{{ $c->name }} <span class="muted" style="font-weight:400">· {{ $c->region }}</span></div>
+                            <div class="muted num" style="font-size: 12px; margin-top: 2px;">
+                                score <b style="color: var(--accent)">{{ $c->avgScore }}</b> · {{ $c->systems }} sys ·
+                                {{ $c->deadEnds }} dead-end · {{ $c->distance }}j away
+                            </div>
+                            <div class="muted num" style="font-size: 12px;">
+                                NPC {{ number_format($c->npcKills) }}/h · <span class="{{ $c->playerKills > 0 ? 'bad' : '' }}">{{ $c->playerKills }} pk</span>
+                            </div>
+                        </button>
+                    @endforeach
+                </div>
+            @endif
+
+            @if ($tour !== null && $tour->systems !== [])
+                <h2 style="margin-top: 18px">Tour: {{ $tourName }}
+                    <span class="muted" style="text-transform:none; letter-spacing:0">
+                        — {{ count($tour->systems) }} systems · {{ $tour->totalJumps }} jumps total
+                        @if ($tour->approachJumps !== null)({{ $tour->approachJumps }} to get there)@endif
+                    </span>
+                    <button wire:click="sendTour({{ json_encode(collect($tour->systems)->pluck('systemId')->all()) }})"
+                            style="float: right; background: var(--accent); color: var(--bg); border: 0; border-radius: 6px; padding: 5px 14px; cursor: pointer; font: 600 12.5px var(--font-body);">
+                        Send tour to game
+                    </button>
+                </h2>
+                <div style="display: flex; flex-wrap: wrap; gap: 6px; align-items: center;">
+                    @foreach ($tour->systems as $i => $system)
+                        @php $secColor = $system->security >= 0.5 ? 'var(--ok)' : ($system->security > 0 ? 'var(--gold)' : 'var(--bad)'); @endphp
+                        <span class="chip" @if ($system->playerKills > 0) style="border-color: var(--bad)" @endif>
+                            @if ($system->legJumps !== null && $system->legJumps > 1)
+                                <span class="muted" style="font-size: 11px">+{{ $system->legJumps }}j</span>
+                            @endif
+                            <span style="color: {{ $secColor }}" class="num">{{ number_format($system->security, 1) }}</span>
+                            <b>{{ $system->name }}</b>
+                            @if ($system->deadEnd)<span title="Dead-end system" style="color: var(--accent)">◖</span>@endif
+                            <span class="muted num" style="font-size: 11px">{{ number_format($system->npcKills) }}npc</span>
+                            @if ($system->playerKills > 0)<span class="bad num" style="font-size: 11px">{{ $system->playerKills }}pk</span>@endif
+                        </span>
+                        @if ($i < count($tour->systems) - 1)<span class="muted">→</span>@endif
+                    @endforeach
+                </div>
+            @endif
+        </div>
+
+        <div class="card wide" style="grid-column: 1 / -1;">
             <h2>Candidate systems</h2>
             @if ($targets->isEmpty())
                 <p class="muted" style="margin: 0">No systems match the filters in range — widen the range or relax the filters.</p>
@@ -47,19 +101,26 @@
                     <table>
                         <tr>
                             <th>System</th><th>Sec</th><th>Constellation</th><th>Region</th>
-                            <th class="r">Jumps</th><th class="r">NPC kills/h</th><th class="r">Player kills/h</th>
-                            <th class="r">Traffic</th><th class="r">Score</th><th></th>
+                            <th class="r">Jumps</th><th class="r" title="NPC kills in this system (live competition)">Sys NPC</th>
+                            <th class="r" title="NPC kills per system across the whole constellation (spawn evidence)">Const NPC</th>
+                            <th class="r">Player kills/h</th>
+                            <th class="r">Traffic</th><th class="r" title="Your logged sites in this constellation, 30 days">Yours</th>
+                            <th class="r">Score</th><th></th>
                         </tr>
                         @foreach ($targets as $target)
                             <tr>
-                                <td><b>{{ $target->name }}</b></td>
+                                <td><b>{{ $target->name }}</b>
+                                    @if ($target->deadEnd)<span class="chip" style="border-color: var(--accent); color: var(--accent); font-size: 10.5px; padding: 0 6px;" title="Dead-end: one gate, no through traffic">dead-end</span>@endif
+                                </td>
                                 <td class="num" style="color: {{ $target->security >= 0.5 ? 'var(--ok)' : ($target->security > 0 ? 'var(--gold)' : 'var(--bad)') }}">{{ number_format($target->security, 1) }}</td>
                                 <td class="muted">{{ $target->constellation }}</td>
                                 <td class="muted">{{ $target->region }}</td>
                                 <td class="r num">{{ $target->distance }}</td>
-                                <td class="r num ok">{{ number_format($target->npcKills) }}</td>
+                                <td class="r num muted">{{ number_format($target->npcKills) }}</td>
+                                <td class="r num ok">{{ number_format($target->constellationNpcKills) }}</td>
                                 <td class="r num {{ $target->playerKills > 0 ? 'bad' : 'muted' }}">{{ $target->playerKills }}</td>
                                 <td class="r num muted">{{ number_format($target->traffic) }}</td>
+                                <td class="r num {{ $target->ownSites > 0 ? 'gold' : 'muted' }}">{{ $target->ownSites ?: '—' }}</td>
                                 <td class="r num"><b>{{ $target->score }}</b></td>
                                 <td>
                                     <button wire:click="setDestination({{ $target->systemId }})" title="Set destination in game"
