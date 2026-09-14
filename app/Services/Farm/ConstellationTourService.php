@@ -104,32 +104,33 @@ class ConstellationTourService
 
         $tour = $this->twoOpt($tour, $originSystemId, $distance);
 
-        // Hydrate with names + live activity.
+        // Hydrate with names + live activity, and expand every leg into the
+        // actual flight path — legs may leave the constellation when that is
+        // the shorter way between two members.
         [$npcKills, $shipKills, $podKills] = $this->scorer->killActivity();
         $gateCounts = $this->scorer->gateCounts();
 
-        $meta = DB::table('solar_systems')
-            ->whereIn('system_id', $tour)
-            ->get(['system_id', 'name', 'security'])
-            ->keyBy('system_id');
-
         $systems = [];
+        $fullPathIds = [$originSystemId];
         $previous = $originSystemId;
         $total = 0;
         $approach = null;
 
         foreach ($tour as $index => $systemId) {
-            $legJumps = $distance[$previous][$systemId] ?? null;
+            $legRoute = $this->routes->route($previous, $systemId, preferSafer: false, avoidUnsafe: $this->avoidUnsafe);
+            $legJumps = $legRoute !== null ? count($legRoute) - 1 : ($distance[$previous][$systemId] ?? null);
 
             if ($legJumps !== null) {
                 $total += $legJumps;
                 $approach ??= $index === 0 ? $legJumps : null;
             }
 
+            if ($legRoute !== null) {
+                $fullPathIds = [...$fullPathIds, ...array_slice($legRoute, 1)];
+            }
+
             $systems[] = (object) [
                 'systemId' => $systemId,
-                'name' => $meta[$systemId]->name ?? "#{$systemId}",
-                'security' => round((float) ($meta[$systemId]->security ?? 0), 1),
                 'legJumps' => $legJumps,
                 'npcKills' => $npcKills[$systemId] ?? 0,
                 'playerKills' => ($shipKills[$systemId] ?? 0) + ($podKills[$systemId] ?? 0),
@@ -139,10 +140,55 @@ class ConstellationTourService
             $previous = $systemId;
         }
 
+        $meta = DB::table('solar_systems')
+            ->whereIn('system_id', array_unique([...$fullPathIds, ...array_column($systems, 'systemId')]))
+            ->get(['system_id', 'name', 'security', 'constellation_id'])
+            ->keyBy('system_id');
+
+        foreach ($systems as $system) {
+            $system->name = $meta[$system->systemId]->name ?? "#{$system->systemId}";
+            $system->security = round((float) ($meta[$system->systemId]->security ?? 0), 1);
+        }
+
+        // Full path with out-of-constellation detours and revisits marked —
+        // the fewer of both, the better the loop.
+        $seen = [];
+        $fullPath = [];
+        $outside = 0;
+        $revisits = 0;
+        $inTourStage = false; // approach hops don't count as detours
+
+        foreach ($fullPathIds as $id) {
+            $revisit = isset($seen[$id]);
+            $seen[$id] = true;
+            $inConstellation = (int) ($meta[$id]->constellation_id ?? 0) === $constellationId;
+
+            if ($inConstellation) {
+                $inTourStage = true;
+            } elseif ($inTourStage) {
+                $outside++;
+            }
+
+            if ($inTourStage && $revisit) {
+                $revisits++;
+            }
+
+            $fullPath[] = (object) [
+                'systemId' => $id,
+                'name' => $meta[$id]->name ?? "#{$id}",
+                'security' => round((float) ($meta[$id]->security ?? 0), 1),
+                'inConstellation' => $inConstellation,
+                'revisit' => $revisit,
+            ];
+        }
+
         return (object) [
             'systems' => $systems,
             'totalJumps' => $total,
             'approachJumps' => $approach,
+            'fullPath' => $fullPath,
+            'outsideCount' => $outside,
+            'revisitCount' => $revisits,
         ];
     }
 

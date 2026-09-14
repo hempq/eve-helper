@@ -28,11 +28,14 @@ class FarmAdvisor extends Component
 
     public ?int $tourConstellationId = null;
 
+    public string $constellationSearch = '';
+
     public ?string $notice = null;
 
     public function planTour(int $constellationId): void
     {
         $this->tourConstellationId = $constellationId;
+        $this->constellationSearch = '';
     }
 
     public function sendTour(array $systemIds, EsiClientInterface $esi): void
@@ -105,9 +108,19 @@ class FarmAdvisor extends Component
             ? $tours->tour($originId, $this->tourConstellationId, $avoidUnsafe)
             : null;
 
+        $searchResults = mb_strlen(trim($this->constellationSearch)) >= 2
+            ? DB::table('constellations as c')
+                ->join('regions as r', 'r.region_id', '=', 'c.region_id')
+                ->where('c.name', 'like', trim($this->constellationSearch).'%')
+                ->orderBy('c.name')
+                ->limit(8)
+                ->get(['c.constellation_id', 'c.name', 'r.name as region'])
+            : collect();
+
         return view('livewire.farm-advisor', [
             'originName' => $originName,
             'targets' => $scored->take(25),
+            'constellationResults' => $searchResults,
             'constellations' => $constellations,
             'tour' => $tour,
             'tourName' => $constellations->firstWhere('constellationId', $this->tourConstellationId)?->name

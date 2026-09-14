@@ -40,6 +40,22 @@
     <div class="cards">
         <div class="card wide" style="grid-column: 1 / -1;">
             <h2>Best constellations <span class="muted" style="text-transform:none; letter-spacing:0">— sites respawn constellation-wide: claim a quiet, productive one</span></h2>
+
+            <div style="position: relative; margin-bottom: 12px;">
+                <input type="text" wire:model.live.debounce.300ms="constellationSearch"
+                       placeholder="…or plan a tour for any constellation by name (e.g. Kimotoro)"
+                       style="width: 100%; max-width: 420px; background: var(--surface2); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); padding: 7px 11px; font: inherit; font-size: 13px;">
+                @if ($constellationResults->isNotEmpty())
+                    <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;">
+                        @foreach ($constellationResults as $result)
+                            <button wire:click="planTour({{ $result->constellation_id }})"
+                                    style="cursor: pointer; border: 1px solid var(--accent); background: none; color: var(--accent); border-radius: 999px; padding: 3px 12px; font: 600 12.5px var(--font-body);">
+                                {{ $result->name }} <span class="muted" style="font-weight: 400">· {{ $result->region }}</span>
+                            </button>
+                        @endforeach
+                    </div>
+                @endif
+            </div>
             @if ($constellations->isEmpty())
                 <p class="muted" style="margin: 0">No rankable constellations in range.</p>
             @else
@@ -89,6 +105,34 @@
                         @if ($i < count($tour->systems) - 1)<span class="muted">→</span>@endif
                     @endforeach
                 </div>
+
+                @if (isset($tour->fullPath) && count($tour->fullPath) > 1)
+                    <p class="muted" style="margin: 12px 0 6px; font-size: 12.5px">
+                        Full flight path — gate by gate:
+                        <span class="num">{{ $tour->totalJumps }} jumps</span>
+                        @if ($tour->outsideCount > 0)
+                            · <span class="gold">{{ $tour->outsideCount }} hop{{ $tour->outsideCount === 1 ? '' : 's' }} outside the constellation</span> (that IS the shortest way)
+                        @else
+                            · never leaves the constellation
+                        @endif
+                        @if ($tour->revisitCount > 0)
+                            · <span class="gold">{{ $tour->revisitCount }} revisit{{ $tour->revisitCount === 1 ? '' : 's' }}</span>
+                        @else
+                            · no system visited twice
+                        @endif
+                    </p>
+                    <div style="display: flex; flex-wrap: wrap; gap: 4px; align-items: center;">
+                        @foreach ($tour->fullPath as $i => $hop)
+                            @php $secColor = $hop->security >= 0.5 ? 'var(--ok)' : ($hop->security > 0 ? 'var(--gold)' : 'var(--bad)'); @endphp
+                            <span class="chip" style="font-size: 11px; padding: 1px 8px;
+                                @if (! $hop->inConstellation) border-style: dashed; opacity: .75; @endif">
+                                <span style="color: {{ $secColor }}" class="num">{{ number_format($hop->security, 1) }}</span>
+                                {{ $hop->name }}@if ($hop->revisit)<span class="gold" title="Passing through again"> ↩</span>@endif
+                            </span>
+                            @if ($i < count($tour->fullPath) - 1)<span class="muted" style="font-size: 10px">→</span>@endif
+                        @endforeach
+                    </div>
+                @endif
             @endif
         </div>
 
