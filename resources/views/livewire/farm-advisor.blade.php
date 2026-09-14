@@ -41,19 +41,22 @@
         <div class="card wide" style="grid-column: 1 / -1;">
             <h2>Best constellations <span class="muted" style="text-transform:none; letter-spacing:0">— sites respawn constellation-wide: claim a quiet, productive one</span></h2>
 
-            <div style="position: relative; margin-bottom: 12px;">
+            <div class="combo" style="margin-bottom: 12px;">
                 <input type="text" wire:model.live.debounce.300ms="constellationSearch"
-                       placeholder="…or plan a tour for any constellation by name (e.g. Kimotoro)"
-                       style="width: 100%; max-width: 420px; background: var(--surface2); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); padding: 7px 11px; font: inherit; font-size: 13px;">
+                       placeholder="Plan a tour for any constellation — type to search (e.g. Kimotoro)"
+                       autocomplete="off"
+                       style="width: 100%; background: var(--surface2); border: 1px solid var(--line); border-radius: 6px; color: var(--ink); padding: 7px 11px; font: inherit; font-size: 13px;">
                 @if ($constellationResults->isNotEmpty())
-                    <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px;">
+                    <div class="dropdown">
                         @foreach ($constellationResults as $result)
-                            <button wire:click="planTour({{ $result->constellation_id }})"
-                                    style="cursor: pointer; border: 1px solid var(--accent); background: none; color: var(--accent); border-radius: 999px; padding: 3px 12px; font: 600 12.5px var(--font-body);">
-                                {{ $result->name }} <span class="muted" style="font-weight: 400">· {{ $result->region }}</span>
+                            <button class="dd-item" wire:click="planTour({{ $result->constellation_id }})">
+                                <b>{{ $result->name }}</b>
+                                <span class="muted">{{ $result->region }}</span>
                             </button>
                         @endforeach
                     </div>
+                @elseif ($searchOpen && mb_strlen(trim($constellationSearch)) >= 2)
+                    <div class="dropdown"><div class="dd-item" style="cursor: default; color: var(--muted)">No matching constellation.</div></div>
                 @endif
             </div>
             @if ($constellations->isEmpty())

@@ -8,10 +8,17 @@ use App\Services\Esi\Exceptions\EsiErrorLimited;
 use App\Services\Esi\Exceptions\EsiRequestFailed;
 use App\Services\Market\TradeFinderService;
 use Illuminate\Contracts\View\View;
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 class TradeFinder extends Component
 {
+    #[On('safety-changed')]
+    public function onSafetyChanged(): void
+    {
+        // Re-render with the new routing setting.
+    }
+
     public Character $character;
 
     public int $cargo = 5000;

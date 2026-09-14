@@ -78,6 +78,12 @@
 
         .flash { border: 1px solid var(--bad); border-left-width: 4px; border-radius: 6px; padding: 10px 14px; color: var(--bad); margin-bottom: 16px; }
 
+        .combo { position: relative; max-width: 420px; }
+        .dropdown { position: absolute; top: calc(100% + 4px); left: 0; right: 0; background: var(--surface2); border: 1px solid var(--line); border-radius: 8px; z-index: 50; overflow: hidden; box-shadow: 0 10px 28px rgba(0,0,0,.45); }
+        .dd-item { display: flex; justify-content: space-between; gap: 10px; width: 100%; text-align: left; padding: 8px 12px; background: none; border: 0; border-bottom: 1px solid color-mix(in srgb, var(--line) 50%, transparent); color: var(--ink); font: inherit; font-size: 13px; cursor: pointer; }
+        .dd-item:last-child { border-bottom: 0; }
+        .dd-item:hover { background: var(--accent-dim); color: var(--accent); }
+
         footer { max-width: 1100px; margin: 0 auto; padding: 0 20px 30px; color: var(--muted); font-size: 12.5px; }
         @media (max-width: 640px) { .char-chip { margin-left: 0; padding-bottom: 10px; } }
     </style>

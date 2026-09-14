@@ -18,6 +18,9 @@ class SafetySetting extends Component
         $this->character->forceFill([
             'avoid_lowsec' => ! $this->character->avoidsLowsec(),
         ])->save();
+
+        // Routing-dependent components on the page must recalculate.
+        $this->dispatch('safety-changed');
     }
 
     public function render(): View

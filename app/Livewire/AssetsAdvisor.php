@@ -12,10 +12,17 @@ use App\Services\Universe\KillActivityService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Http\Client\RequestException;
 use Illuminate\Support\Facades\DB;
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 class AssetsAdvisor extends Component
 {
+    #[On('safety-changed')]
+    public function onSafetyChanged(): void
+    {
+        // Re-render with the new routing setting.
+    }
+
     public Character $character;
 
     public ?int $locationId = null;

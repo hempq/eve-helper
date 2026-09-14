@@ -12,10 +12,17 @@ use App\Services\Farm\TargetScorerService;
 use App\Services\Universe\EveScoutService;
 use Illuminate\Contracts\View\View;
 use Illuminate\Support\Facades\DB;
+use Livewire\Attributes\On;
 use Livewire\Component;
 
 class FarmAdvisor extends Component
 {
+    #[On('safety-changed')]
+    public function onSafetyChanged(): void
+    {
+        // Re-render: the character model re-hydrates with the new setting.
+    }
+
     public Character $character;
 
     public int $maxJumps = 10;
@@ -30,12 +37,22 @@ class FarmAdvisor extends Component
 
     public string $constellationSearch = '';
 
+    /** Suppresses the dropdown after a pick until the user types again. */
+    public bool $searchOpen = false;
+
     public ?string $notice = null;
+
+    public function updatedConstellationSearch(): void
+    {
+        $this->searchOpen = true;
+    }
 
     public function planTour(int $constellationId): void
     {
         $this->tourConstellationId = $constellationId;
-        $this->constellationSearch = '';
+        $this->searchOpen = false;
+        $this->constellationSearch = (string) DB::table('constellations')
+            ->where('constellation_id', $constellationId)->value('name');
     }
 
     public function sendTour(array $systemIds, EsiClientInterface $esi): void
@@ -108,7 +125,7 @@ class FarmAdvisor extends Component
             ? $tours->tour($originId, $this->tourConstellationId, $avoidUnsafe)
             : null;
 
-        $searchResults = mb_strlen(trim($this->constellationSearch)) >= 2
+        $searchResults = ($this->searchOpen && mb_strlen(trim($this->constellationSearch)) >= 2)
             ? DB::table('constellations as c')
                 ->join('regions as r', 'r.region_id', '=', 'c.region_id')
                 ->where('c.name', 'like', trim($this->constellationSearch).'%')
