@@ -21,7 +21,7 @@ Route::get('/trade', [TradeController::class, 'show'])->name('trade');
 // Local-only helper so browser automation can reach authenticated pages
 // without going through EVE SSO. Returns 404 outside the local environment.
 Route::get('/dev/login/{characterId}', function (int $characterId) {
-    abort_unless(app()->environment('local'), 404);
+    abort_unless(app()->environment('local') || config('eve.allow_dev_login'), 404);
     abort_unless(\App\Models\Character::whereKey($characterId)->exists(), 404);
 
     session(['character_id' => $characterId]);

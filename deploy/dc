@@ -1,0 +1,17 @@
+#!/usr/bin/env bash
+# Convenience wrapper for the standalone dev/prod stack.
+#   ./deploy/dc artisan migrate     -> php artisan in the app container
+#   ./deploy/dc test                -> php artisan test
+#   ./deploy/dc composer require x  -> composer in the app container
+#   ./deploy/dc up|down|restart|logs -> docker compose passthrough
+set -euo pipefail
+cd "$(dirname "$0")"
+COMPOSE=(docker compose -f docker-compose.yml)
+
+case "${1:-}" in
+  artisan)  shift; exec "${COMPOSE[@]}" exec app php artisan "$@" ;;
+  test)     shift; exec "${COMPOSE[@]}" exec app php artisan test "$@" ;;
+  composer) shift; exec "${COMPOSE[@]}" exec app composer "$@" ;;
+  sh|shell) exec "${COMPOSE[@]}" exec app bash ;;
+  *)        exec "${COMPOSE[@]}" "$@" ;;
+esac

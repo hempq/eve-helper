@@ -2,6 +2,10 @@
 
 return [
 
+    // Enables the /dev/login/{id} SSO bypass for local browser testing on a
+    // single-user localhost instance. Never enable on a public host.
+    'allow_dev_login' => (bool) env('EVE_ALLOW_DEV_LOGIN', false),
+
     /*
     |--------------------------------------------------------------------------
     | EVE SSO (OAuth2)
