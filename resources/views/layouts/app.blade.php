@@ -121,6 +121,7 @@
                 <a href="{{ route('market') }}" @class(['active' => request()->routeIs('market')])>Market</a>
                 <a href="{{ route('farm') }}" @class(['active' => request()->routeIs('farm')])>Farm</a>
                 <a href="{{ route('trade') }}" @class(['active' => request()->routeIs('trade')])>Trade</a>
+                <a href="{{ route('warzone') }}" @class(['active' => request()->routeIs('warzone')])>Warzone</a>
                 <a href="{{ route('settings') }}" @class(['active' => request()->routeIs('settings')])>Settings</a>
             </nav>
             <div class="char-chip">

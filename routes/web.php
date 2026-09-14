@@ -17,6 +17,7 @@ Route::get('/remap', [RemapController::class, 'show'])->name('remap');
 Route::get('/market', [MarketController::class, 'show'])->name('market');
 Route::get('/farm', [FarmController::class, 'show'])->name('farm');
 Route::get('/trade', [TradeController::class, 'show'])->name('trade');
+Route::get('/warzone', [\App\Http\Controllers\WarzoneController::class, 'show'])->name('warzone');
 Route::get('/settings', [\App\Http\Controllers\SettingsController::class, 'show'])->name('settings');
 Route::post('/settings', [\App\Http\Controllers\SettingsController::class, 'update'])->name('settings.update');
 
