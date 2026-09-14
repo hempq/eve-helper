@@ -64,7 +64,7 @@ Gistii B-Type Small Shield Booster"
                     <tr>
                         <th>Item</th><th class="r">Qty</th>
                         <th class="r">Buy (5%)</th><th class="r">Sell (5%)</th>
-                        <th class="r">Instant net</th><th class="r">Order net</th><th>Advice</th>
+                        <th class="r">Instant net</th><th class="r">Order net</th><th class="r">Fill time</th><th>Advice</th>
                     </tr>
                     @foreach ($result->items as $item)
                         <tr>
@@ -74,10 +74,15 @@ Gistii B-Type Small Shield Booster"
                             <td class="r num">{{ $item->sellPrice > 0 ? number_format($item->sellPrice, 2) : '—' }}</td>
                             <td class="r num">{{ number_format($item->instantNet) }}</td>
                             <td class="r num">{{ number_format($item->orderNet) }}</td>
+                            <td class="r num muted">
+                                @php $days = $item->daysToSell(); @endphp
+                                @if ($days === null) — @elseif ($days < 1) &lt;1d @else {{ round($days) }}d @endif
+                            </td>
                             <td>
                                 @switch($item->recommendation())
                                     @case('sell-order') <span class="chip up">sell order</span> @break
                                     @case('instant') <span class="chip">instant</span> @break
+                                    @case('contract') <span class="chip gold" title="Barely trades on the market ({{ number_format($item->avgDailyVolume, 1) }}/day) — sell via contract">contract</span> @break
                                     @default <span class="chip gold" title="No orders at this hub — check contracts / other hubs">no market</span>
                                 @endswitch
                             </td>

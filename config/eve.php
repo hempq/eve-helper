@@ -82,6 +82,9 @@ return [
         'fuzzwork_url' => env('EVE_FUZZWORK_MARKET_URL', 'https://market.fuzzwork.co.uk/aggregates/'),
         'price_cache_seconds' => 1800, // Fuzzwork refreshes every ~30 minutes
 
+        // Liquidity/fill-time lookup via ESI market history (extra API calls).
+        'history_enabled' => (bool) env('EVE_MARKET_HISTORY', true),
+
         // The five classic trade hubs: station id => metadata.
         'hubs' => [
             60003760 => ['name' => 'Jita IV-4 CNAP', 'system' => 'Jita', 'region_id' => 10000002],

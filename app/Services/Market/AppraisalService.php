@@ -7,10 +7,14 @@ use Illuminate\Support\Facades\DB;
 
 class AppraisalService
 {
+    /** Cap history lookups per appraisal (each is an ESI call, cached daily). */
+    private const HISTORY_LOOKUP_CAP = 60;
+
     public function __construct(
         private readonly PasteParser $parser,
         private readonly PriceProviderInterface $prices,
         private readonly TradeFeeService $fees,
+        private readonly MarketHistoryService $history,
     ) {}
 
     public function appraise(Character $character, int $stationId, string $text): AppraisalResult
@@ -64,6 +68,11 @@ class AppraisalService
         $salesTax = $this->fees->salesTaxRate($character);
         $brokerFee = $this->fees->brokerFeeRate($character);
 
+        $regionId = config('eve.market.history_enabled') ? $this->regionOfStation($stationId) : null;
+        // Look up liquidity for the most valuable items only (each is a
+        // cached ESI history call).
+        $volumeTypes = $regionId !== null ? $this->highestValueTypes($typeQuantities, $priceMap) : [];
+
         $items = [];
 
         foreach ($typeQuantities as $typeId => $quantity) {
@@ -76,6 +85,10 @@ class AppraisalService
             $buy = $priceMap[$typeId]['buy'] ?? 0.0;
             $sell = $priceMap[$typeId]['sell'] ?? 0.0;
 
+            $avgDailyVolume = ($regionId !== null && isset($volumeTypes[$typeId]))
+                ? $this->history->averageDailyVolume($regionId, (int) $typeId)
+                : null;
+
             $items[] = new AppraisalItem(
                 typeId: $typeId,
                 name: $type->name,
@@ -87,11 +100,22 @@ class AppraisalService
                 instantNet: $buy * $quantity * (1 - $salesTax),
                 // Listing a sell order: sales tax + broker fee.
                 orderNet: $sell * $quantity * (1 - $salesTax - $brokerFee),
+                avgDailyVolume: $avgDailyVolume,
             );
         }
 
         usort($items, fn (AppraisalItem $a, AppraisalItem $b) => $b->orderNet <=> $a->orderNet);
 
+        return $this->buildResult($stationId, $items, $unknownNames, $unparsedLines, $salesTax, $brokerFee);
+    }
+
+    /**
+     * @param  list<AppraisalItem>  $items
+     * @param  list<string>  $unknownNames
+     * @param  list<string>  $unparsedLines
+     */
+    private function buildResult(int $stationId, array $items, array $unknownNames, array $unparsedLines, float $salesTax, float $brokerFee): AppraisalResult
+    {
         return new AppraisalResult(
             stationId: $stationId,
             items: $items,
@@ -100,5 +124,36 @@ class AppraisalService
             salesTaxRate: $salesTax,
             brokerFeeRate: $brokerFee,
         );
+    }
+
+    private function regionOfStation(int $stationId): ?int
+    {
+        $hubs = config('eve.market.hubs');
+        if (isset($hubs[$stationId]['region_id'])) {
+            return (int) $hubs[$stationId]['region_id'];
+        }
+
+        $systemId = DB::table('stations')->where('station_id', $stationId)->value('system_id');
+
+        return $systemId !== null
+            ? (int) DB::table('solar_systems')->where('system_id', $systemId)->value('region_id')
+            : null;
+    }
+
+    /**
+     * @param  array<int, int>  $typeQuantities
+     * @param  array<int, array{buy: float, sell: float}>  $priceMap
+     * @return array<int, true> the highest-value type ids, as a lookup set
+     */
+    private function highestValueTypes(array $typeQuantities, array $priceMap): array
+    {
+        $values = [];
+        foreach ($typeQuantities as $typeId => $quantity) {
+            $values[$typeId] = ($priceMap[$typeId]['sell'] ?? 0.0) * $quantity;
+        }
+
+        arsort($values);
+
+        return array_fill_keys(array_slice(array_keys($values), 0, self::HISTORY_LOOKUP_CAP), true);
     }
 }
