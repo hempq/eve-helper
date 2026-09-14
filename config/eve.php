@@ -69,4 +69,29 @@ return [
         'base_url' => env('EVE_SDE_BASE_URL', 'https://www.fuzzwork.co.uk/dump/latest/csv/'),
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Market
+    |--------------------------------------------------------------------------
+    */
+
+    'market' => [
+        'fuzzwork_url' => env('EVE_FUZZWORK_MARKET_URL', 'https://market.fuzzwork.co.uk/aggregates/'),
+        'price_cache_seconds' => 1800, // Fuzzwork refreshes every ~30 minutes
+
+        // The five classic trade hubs: station id => metadata.
+        'hubs' => [
+            60003760 => ['name' => 'Jita IV-4 CNAP', 'system' => 'Jita', 'region_id' => 10000002],
+            60008494 => ['name' => 'Amarr VIII (Oris) EFA', 'system' => 'Amarr', 'region_id' => 10000043],
+            60011866 => ['name' => 'Dodixie IX-20 FNAP', 'system' => 'Dodixie', 'region_id' => 10000032],
+            60004588 => ['name' => 'Rens VI-8 BTT', 'system' => 'Rens', 'region_id' => 10000030],
+            60005686 => ['name' => 'Hek VIII-12 BFPCS', 'system' => 'Hek', 'region_id' => 10000042],
+        ],
+        'default_hub' => 60003760,
+
+        // Skill type ids driving trade fees.
+        'accounting_skill_id' => 16622,
+        'broker_relations_skill_id' => 3446,
+    ],
+
 ];

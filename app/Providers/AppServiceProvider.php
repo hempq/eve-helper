@@ -4,6 +4,9 @@ namespace App\Providers;
 
 use App\Services\Esi\EsiClient;
 use App\Services\Esi\EsiClientInterface;
+use App\Services\Market\FuzzworkPriceProvider;
+use App\Services\Market\PriceProviderInterface;
+use App\Services\Market\TradeFeeService;
 use App\Services\Sde\SdeDownloader;
 use App\Services\Sso\AccessTokenManager;
 use App\Services\Sso\AccessTokenProvider;
@@ -34,6 +37,18 @@ class AppServiceProvider extends ServiceProvider
         ));
 
         $this->app->singleton(AccessTokenProvider::class, AccessTokenManager::class);
+
+        $this->app->singleton(PriceProviderInterface::class, fn (Application $app) => new FuzzworkPriceProvider(
+            cache: $app->make(Cache::class),
+            baseUrl: config('eve.market.fuzzwork_url'),
+            userAgent: config('eve.esi.user_agent'),
+            cacheSeconds: (int) config('eve.market.price_cache_seconds'),
+        ));
+
+        $this->app->singleton(TradeFeeService::class, fn () => new TradeFeeService(
+            accountingSkillId: (int) config('eve.market.accounting_skill_id'),
+            brokerRelationsSkillId: (int) config('eve.market.broker_relations_skill_id'),
+        ));
 
         $this->app->singleton(SdeDownloader::class, fn () => new SdeDownloader(
             baseUrl: config('eve.sde.base_url'),
