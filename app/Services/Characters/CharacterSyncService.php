@@ -31,6 +31,7 @@ class CharacterSyncService
         $this->syncWallet($character);
         $this->syncWalletJournal($character);
         $this->syncAssets($character);
+        $this->syncOrders($character);
 
         $character->forceFill(['last_synced_at' => CarbonImmutable::now()])->save();
     }
@@ -128,6 +129,32 @@ class CharacterSyncService
 
             foreach (array_chunk($rows, 500) as $chunk) {
                 DB::table('character_assets')->insert($chunk);
+            }
+        });
+    }
+
+    private function syncOrders(Character $character): void
+    {
+        $response = $this->esi->get("/characters/{$character->character_id}/orders", [], $character);
+
+        $rows = array_map(fn (array $order) => [
+            'order_id' => $order['order_id'],
+            'character_id' => $character->character_id,
+            'type_id' => $order['type_id'],
+            'location_id' => $order['location_id'],
+            'region_id' => $order['region_id'],
+            'is_buy_order' => $order['is_buy_order'] ?? false,
+            'price' => $order['price'],
+            'volume_remain' => $order['volume_remain'],
+            'volume_total' => $order['volume_total'],
+            'issued' => CarbonImmutable::parse($order['issued']),
+        ], $response->data);
+
+        DB::transaction(function () use ($character, $rows) {
+            DB::table('character_orders')->where('character_id', $character->character_id)->delete();
+
+            foreach (array_chunk($rows, 500) as $chunk) {
+                DB::table('character_orders')->insert($chunk);
             }
         });
     }

@@ -80,6 +80,14 @@ class CharacterSyncServiceTest extends TestCase
             ]);
 
         $esi->shouldReceive('get')
+            ->with("/characters/{$id}/orders", [], $character)
+            ->andReturn(new EsiResponse([
+                ['order_id' => 7001, 'type_id' => 34, 'location_id' => 60003760, 'region_id' => 10000002,
+                    'is_buy_order' => false, 'price' => 5.5, 'volume_remain' => 100, 'volume_total' => 500,
+                    'issued' => '2026-09-13T12:00:00Z'],
+            ], $expires));
+
+        $esi->shouldReceive('get')
             ->with("/characters/{$id}/attributes", [], $character)
             ->andReturn(new EsiResponse([
                 'charisma' => 23,
@@ -132,6 +140,10 @@ class CharacterSyncServiceTest extends TestCase
         $journal = DB::table('wallet_journal')->where('journal_id', 555001)->first();
         $this->assertSame('bounty_prizes', $journal->ref_type);
         $this->assertEqualsWithDelta(1_500_000.5, (float) $journal->amount, 0.01);
+
+        $order = DB::table('character_orders')->where('order_id', 7001)->first();
+        $this->assertSame(34, (int) $order->type_id);
+        $this->assertEqualsWithDelta(5.5, (float) $order->price, 0.001);
     }
 
     public function test_queue_is_replaced_not_appended_on_resync(): void

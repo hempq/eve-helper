@@ -8,6 +8,8 @@
 
     <livewire:assets-advisor :character="$character" />
 
+    <livewire:orders-monitor :character="$character" />
+
     <div style="margin-top: 24px">
         <livewire:market-appraisal :character="$character" />
     </div>
