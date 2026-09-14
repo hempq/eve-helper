@@ -19,6 +19,8 @@ class ConstellationTourService
         private readonly RouteService $routes,
     ) {}
 
+    private bool $avoidUnsafe = false;
+
     /**
      * Rank constellations by their member systems' farm scores.
      *
@@ -53,8 +55,10 @@ class ConstellationTourService
      *
      * @return object{systems: list<object>, totalJumps: int, approachJumps: ?int}|null
      */
-    public function tour(int $originSystemId, int $constellationId): ?object
+    public function tour(int $originSystemId, int $constellationId, bool $avoidUnsafe = false): ?object
     {
+        $this->avoidUnsafe = $avoidUnsafe;
+
         $members = DB::table('solar_systems')
             ->where('constellation_id', $constellationId)
             ->pluck('system_id')
@@ -164,7 +168,7 @@ class ConstellationTourService
                     continue;
                 }
 
-                $jumps = $this->routes->jumps($a, $b, preferSafer: false);
+                $jumps = $this->routes->jumps($a, $b, preferSafer: false, avoidUnsafe: $this->avoidUnsafe);
 
                 if ($jumps !== null) {
                     $matrix[$a][$b] = $jumps;

@@ -97,6 +97,7 @@
                 <a href="{{ route('trade') }}" @class(['active' => request()->routeIs('trade')])>Trade</a>
             </nav>
             <div class="char-chip">
+                <livewire:safety-setting :character="$character" />
                 <span><b>{{ $character->name }}</b> · <span class="num">{{ number_format($character->total_sp ?? 0) }} SP</span></span>
                 <form method="POST" action="{{ route('eve.logout') }}">
                     @csrf

@@ -64,6 +64,32 @@ class RouteServiceTest extends TestCase
         $this->assertNull($this->app->make(RouteService::class)->route(1, 5));
     }
 
+    public function test_avoid_unsafe_excludes_lowsec_entirely(): void
+    {
+        $service = $this->app->make(RouteService::class);
+
+        // With the safe path intact, avoidance changes nothing.
+        $this->assertSame([1, 2, 3], $service->route(1, 3, avoidUnsafe: true));
+
+        // Remove the safe midpoint: only the low-sec path remains, so a
+        // high-sec-only route is impossible (not merely penalized).
+        DB::table('system_jumps')->where('from_system_id', 2)->orWhere('to_system_id', 2)->delete();
+
+        // Fresh instances: the graph is cached per service instance.
+        $this->assertSame([1, 4, 3], $this->app->make(RouteService::class)->route(1, 3)); // penalty mode still finds it
+        $this->assertNull($this->app->make(RouteService::class)->route(1, 3, avoidUnsafe: true));
+    }
+
+    public function test_distances_from_respects_avoid_unsafe(): void
+    {
+        $distances = $this->app->make(RouteService::class)->distancesFrom(1, 5, avoidUnsafe: true);
+
+        // DangerMid (4, low-sec) is not entered at all; Target still reached
+        // through the safe path.
+        $this->assertArrayNotHasKey(4, $distances);
+        $this->assertSame(2, $distances[3]);
+    }
+
     public function test_same_system_is_zero_jumps(): void
     {
         $this->assertSame(0, $this->app->make(RouteService::class)->jumps(1, 1));

@@ -36,7 +36,7 @@ class HubComparisonService
             $systemId = (int) ($hubSystemIds[$hub['system']] ?? 0);
 
             $route = ($originSystemId !== null && $systemId !== 0)
-                ? $this->routes->route($originSystemId, $systemId)
+                ? $this->routes->route($originSystemId, $systemId, avoidUnsafe: $character->avoidsLowsec())
                 : null;
 
             $options[] = new HubOption(

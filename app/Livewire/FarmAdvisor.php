@@ -77,6 +77,11 @@ class FarmAdvisor extends Component
 
         $this->maxJumps = max(1, min(25, $this->maxJumps));
 
+        // The global high-sec-only setting constrains the scan traversal —
+        // unless the pilot explicitly asks for low/null targets here.
+        $avoidUnsafe = $this->character->avoidsLowsec()
+            && ! in_array($this->securityBand, ['lowsec', 'nullsec'], true);
+
         $scored = $originId !== null
             ? $scorer->score(
                 $originId,
@@ -85,6 +90,7 @@ class FarmAdvisor extends Component
                 $this->faction !== '' ? $this->faction : null,
                 $this->useWormholes ? $eveScout->edges() : [],
                 $this->character,
+                $avoidUnsafe,
             )
             : collect();
 
@@ -96,7 +102,7 @@ class FarmAdvisor extends Component
         }
 
         $tour = ($originId !== null && $this->tourConstellationId !== null)
-            ? $tours->tour($originId, $this->tourConstellationId)
+            ? $tours->tour($originId, $this->tourConstellationId, $avoidUnsafe)
             : null;
 
         return view('livewire.farm-advisor', [

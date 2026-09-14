@@ -25,11 +25,13 @@ class RouteService
 
     /**
      * Systems along the route including both endpoints, or null when
-     * unreachable (different islands, unknown ids).
+     * unreachable (different islands, unknown ids). With $avoidUnsafe,
+     * low/null-sec systems are excluded from the graph entirely — a
+     * destination below the high-sec limit becomes unreachable.
      *
      * @return list<int>|null
      */
-    public function route(int $fromSystemId, int $toSystemId, bool $preferSafer = true): ?array
+    public function route(int $fromSystemId, int $toSystemId, bool $preferSafer = true, bool $avoidUnsafe = false): ?array
     {
         $this->load();
 
@@ -54,9 +56,15 @@ class RouteService
             }
 
             foreach ($this->adjacency[$system] ?? [] as $neighbor) {
+                $unsafe = ($this->securities[$neighbor] ?? 1.0) < self::HIGHSEC_LIMIT;
+
+                if ($avoidUnsafe && $unsafe) {
+                    continue;
+                }
+
                 $cost = 1.0;
 
-                if ($preferSafer && ($this->securities[$neighbor] ?? 1.0) < self::HIGHSEC_LIMIT) {
+                if ($preferSafer && $unsafe) {
                     $cost += self::UNSAFE_PENALTY;
                 }
 
@@ -82,9 +90,9 @@ class RouteService
         return array_reverse($path);
     }
 
-    public function jumps(int $fromSystemId, int $toSystemId, bool $preferSafer = true): ?int
+    public function jumps(int $fromSystemId, int $toSystemId, bool $preferSafer = true, bool $avoidUnsafe = false): ?int
     {
-        $route = $this->route($fromSystemId, $toSystemId, $preferSafer);
+        $route = $this->route($fromSystemId, $toSystemId, $preferSafer, $avoidUnsafe);
 
         return $route === null ? null : count($route) - 1;
     }
@@ -97,7 +105,7 @@ class RouteService
      *         connections (e.g. live Thera/Turnur wormholes)
      * @return array<int, int> system id => jumps
      */
-    public function distancesFrom(int $fromSystemId, int $maxJumps, array $extraEdges = []): array
+    public function distancesFrom(int $fromSystemId, int $maxJumps, array $extraEdges = [], bool $avoidUnsafe = false): array
     {
         $this->load();
 
@@ -115,6 +123,10 @@ class RouteService
 
             foreach ($frontier as $system) {
                 foreach ($adjacency[$system] ?? [] as $neighbor) {
+                    if ($avoidUnsafe && ($this->securities[$neighbor] ?? 1.0) < self::HIGHSEC_LIMIT) {
+                        continue;
+                    }
+
                     if (! isset($distances[$neighbor])) {
                         $distances[$neighbor] = $depth;
                         $next[] = $neighbor;

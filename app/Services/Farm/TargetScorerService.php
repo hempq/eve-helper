@@ -39,8 +39,9 @@ class TargetScorerService
         ?string $faction = null,
         array $extraEdges = [],
         ?\App\Models\Character $character = null,
+        bool $avoidUnsafe = false,
     ): Collection {
-        $distances = $this->routes->distancesFrom($originSystemId, $maxJumps, $extraEdges);
+        $distances = $this->routes->distancesFrom($originSystemId, $maxJumps, $extraEdges, $avoidUnsafe);
         unset($distances[$originSystemId]);
 
         if ($distances === []) {
@@ -117,18 +118,21 @@ class TargetScorerService
                 $constNpc = $constNpcPerSystem[$constellationId] ?? 0.0;
                 $ownSites = min(10, $mySites[$constellationId] ?? 0);
 
-                // Quiet system in a productive constellation: constellation
-                // activity is spawn evidence, same-system activity is live
-                // competition; danger, traffic and distance subtract;
-                // dead-end pockets and personally proven ground add.
+                // Quiet system in a productive constellation. Pilot presence
+                // is the enemy of standing anomalies: ESI has no pilot
+                // count, so its two proxies — gate traffic and in-system
+                // NPC kills (someone is ratting right there) — both take a
+                // strong logarithmic penalty. Dead-end pockets weigh
+                // heavily: with no through traffic, unscanned combat
+                // anomalies pile up there.
                 $score = 10 * log1p($constNpc)
-                    - 4 * log1p($npc)
+                    - 5 * log1p($npc)
+                    - 5 * log1p($jumps)
                     - 12 * $players
-                    - $jumps / 50
                     - $distance
                     + match ($gates) {
-                        1 => 10,
-                        2 => 4,
+                        1 => 18,
+                        2 => 6,
                         default => 0,
                     }
                     + 2 * $ownSites;

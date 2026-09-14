@@ -22,6 +22,8 @@ class SellTripPlanner
     /** @var array<string, ?int> */
     private array $jumpCache = [];
 
+    private bool $avoidUnsafe = false;
+
     /**
      * @param  array<int, int>  $typeQuantities
      * @param  'order'|'instant'  $metric
@@ -35,6 +37,7 @@ class SellTripPlanner
     ): ?SellTripPlan {
         $iskPerJump ??= (float) config('eve.market.isk_per_jump');
         $this->jumpCache = [];
+        $this->avoidUnsafe = $character->avoidsLowsec();
 
         $hubs = config('eve.market.hubs');
         $hubSystemIds = DB::table('solar_systems')
@@ -168,7 +171,7 @@ class SellTripPlanner
             $totalNet += $stopNet;
 
             $route = ($previousSystem !== null && $stationSystem !== null)
-                ? $this->routes->route($previousSystem, $stationSystem)
+                ? $this->routes->route($previousSystem, $stationSystem, avoidUnsafe: $this->avoidUnsafe)
                 : null;
 
             $stops[] = new TripStop(
@@ -264,7 +267,7 @@ class SellTripPlanner
             return null;
         }
 
-        return $this->jumpCache["{$from}:{$to}"] ??= $this->routes->jumps($from, $to);
+        return $this->jumpCache["{$from}:{$to}"] ??= $this->routes->jumps($from, $to, avoidUnsafe: $this->avoidUnsafe);
     }
 
     /**

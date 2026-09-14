@@ -39,4 +39,12 @@ class Character extends Model
     {
         return $this->hasMany(CharacterSkillQueueEntry::class, 'character_id')->orderBy('position');
     }
+
+    /**
+     * Global routing preference: never plan through low/null-sec systems.
+     */
+    public function avoidsLowsec(): bool
+    {
+        return (bool) ($this->avoid_lowsec ?? true);
+    }
 }
