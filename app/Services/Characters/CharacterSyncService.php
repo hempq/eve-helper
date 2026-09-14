@@ -28,6 +28,7 @@ class CharacterSyncService
         $this->syncSkillQueue($character);
         $this->syncAttributes($character);
         $this->syncImplants($character);
+        $this->syncWallet($character);
 
         $character->forceFill(['last_synced_at' => CarbonImmutable::now()])->save();
     }
@@ -81,6 +82,19 @@ class CharacterSyncService
                 DB::table('character_skill_queue')->insert($chunk);
             }
         });
+    }
+
+    private function syncWallet(Character $character): void
+    {
+        $response = $this->esi->get("/characters/{$character->character_id}/wallet", [], $character);
+
+        // The wallet endpoint returns a bare number; the ESI client wraps
+        // scalar JSON responses in an array under key 0.
+        $balance = is_array($response->data) ? ($response->data[0] ?? null) : $response->data;
+
+        if (is_numeric($balance)) {
+            $character->forceFill(['wallet_balance' => (float) $balance])->save();
+        }
     }
 
     private function syncImplants(Character $character): void

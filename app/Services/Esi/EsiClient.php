@@ -59,8 +59,12 @@ class EsiClient implements EsiClientInterface
             throw EsiRequestFailed::fromResponse($path, $response);
         }
 
+        $json = $response->json();
+
         $fresh = [
-            'data' => $response->json(),
+            // Scalar responses (e.g. the wallet balance) are wrapped so
+            // EsiResponse::$data is always an array.
+            'data' => is_array($json) ? $json : [$json],
             'etag' => $response->header('ETag') ?: null,
             'expires_at' => $this->expiresAt($response)->toIso8601String(),
             'pages' => max(1, (int) $response->header('X-Pages', '1')),

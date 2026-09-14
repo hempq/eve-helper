@@ -90,6 +90,7 @@
             <nav class="main">
                 <a href="{{ route('home') }}" @class(['active' => request()->routeIs('home')])>Dashboard</a>
                 <a href="{{ route('skills') }}" @class(['active' => request()->routeIs('skills')])>Skills</a>
+                <a href="{{ route('planner') }}" @class(['active' => request()->routeIs('planner')])>Planner</a>
                 <a href="{{ route('remap') }}" @class(['active' => request()->routeIs('remap')])>Remap</a>
             </nav>
             <div class="char-chip">

@@ -2,12 +2,14 @@
 
 use App\Http\Controllers\Auth\EveAuthController;
 use App\Http\Controllers\DashboardController;
+use App\Http\Controllers\PlannerController;
 use App\Http\Controllers\RemapController;
 use App\Http\Controllers\SkillsController;
 use Illuminate\Support\Facades\Route;
 
 Route::get('/', [DashboardController::class, 'show'])->name('home');
 Route::get('/skills', [SkillsController::class, 'index'])->name('skills');
+Route::get('/planner', [PlannerController::class, 'show'])->name('planner');
 Route::get('/remap', [RemapController::class, 'show'])->name('remap');
 
 // Local-only helper so browser automation can reach authenticated pages

@@ -55,6 +55,16 @@ class QueueAnalysisService
             $buckets[] = new TrainingBucket($primary, $secondary, $sp);
         }
 
+        return $this->reportFromBuckets($character, $buckets, $rows->count());
+    }
+
+    /**
+     * Remap analysis for any set of training buckets (live queue or a plan).
+     *
+     * @param  list<TrainingBucket>  $buckets
+     */
+    public function reportFromBuckets(Character $character, array $buckets, int $skillCount): RemapReport
+    {
         $current = new AttributeSet(
             (int) $character->charisma,
             (int) $character->intelligence,
@@ -64,23 +74,49 @@ class QueueAnalysisService
         );
 
         $bonuses = $this->implantBonuses($character);
-        $base = $current->subtract($bonuses);
 
         $optimal = $this->optimizer->optimize($buckets, $bonuses);
 
         return new RemapReport(
-            totalSp: array_sum($bucketSp),
-            skillCount: $rows->count(),
+            totalSp: (int) array_sum(array_map(fn (TrainingBucket $b) => $b->sp, $buckets)),
+            skillCount: $skillCount,
             buckets: $buckets,
             currentAttributes: $current,
             implantBonuses: $bonuses,
-            currentBase: $base,
+            currentBase: $current->subtract($bonuses),
             optimalBase: $optimal->baseAttributes,
             currentMinutes: $this->optimizer->minutesFor($buckets, $current),
             optimalMinutes: $optimal->minutes,
             bonusRemaps: (int) ($character->bonus_remaps ?? 0),
             nextYearlyRemapAt: $character->last_remap_date?->addYear(),
         );
+    }
+
+    /**
+     * Aggregate plan entries into attribute-pair buckets.
+     *
+     * @param  iterable<PlanEntry>  $entries
+     * @return list<TrainingBucket>
+     */
+    public function bucketsFromEntries(iterable $entries): array
+    {
+        $bucketSp = [];
+
+        foreach ($entries as $entry) {
+            $key = $entry->primaryAttribute.'|'.$entry->secondaryAttribute;
+            $bucketSp[$key] = ($bucketSp[$key] ?? 0) + $entry->sp;
+        }
+
+        $buckets = [];
+        foreach ($bucketSp as $key => $sp) {
+            if ($sp <= 0) {
+                continue;
+            }
+            [$primary, $secondary] = explode('|', $key);
+            $buckets[] = new TrainingBucket($primary, $secondary, $sp);
+        }
+
+        return $buckets;
     }
 
     public function implantBonuses(Character $character): AttributeSet
