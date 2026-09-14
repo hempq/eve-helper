@@ -89,6 +89,45 @@ class RouteService
         return $route === null ? null : count($route) - 1;
     }
 
+    /**
+     * Jump distance to every system reachable within $maxJumps (plain BFS,
+     * no security weighting — used for "what is near me" scans).
+     *
+     * @param  list<array{0: int, 1: int}>  $extraEdges  temporary bidirectional
+     *         connections (e.g. live Thera/Turnur wormholes)
+     * @return array<int, int> system id => jumps
+     */
+    public function distancesFrom(int $fromSystemId, int $maxJumps, array $extraEdges = []): array
+    {
+        $this->load();
+
+        $adjacency = $this->adjacency;
+        foreach ($extraEdges as [$a, $b]) {
+            $adjacency[$a][] = $b;
+            $adjacency[$b][] = $a;
+        }
+
+        $distances = [$fromSystemId => 0];
+        $frontier = [$fromSystemId];
+
+        for ($depth = 1; $depth <= $maxJumps && $frontier !== []; $depth++) {
+            $next = [];
+
+            foreach ($frontier as $system) {
+                foreach ($adjacency[$system] ?? [] as $neighbor) {
+                    if (! isset($distances[$neighbor])) {
+                        $distances[$neighbor] = $depth;
+                        $next[] = $neighbor;
+                    }
+                }
+            }
+
+            $frontier = $next;
+        }
+
+        return $distances;
+    }
+
     private function load(): void
     {
         if ($this->adjacency !== null) {

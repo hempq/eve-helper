@@ -29,6 +29,7 @@ class CharacterSyncService
         $this->syncAttributes($character);
         $this->syncImplants($character);
         $this->syncWallet($character);
+        $this->syncWalletJournal($character);
         $this->syncAssets($character);
 
         $character->forceFill(['last_synced_at' => CarbonImmutable::now()])->save();
@@ -83,6 +84,28 @@ class CharacterSyncService
                 DB::table('character_skill_queue')->insert($chunk);
             }
         });
+    }
+
+    private function syncWalletJournal(Character $character): void
+    {
+        $entries = $this->esi->getAllPages("/characters/{$character->character_id}/wallet/journal", [], $character);
+
+        $rows = array_map(fn (array $entry) => [
+            'journal_id' => $entry['id'],
+            'character_id' => $character->character_id,
+            'ref_type' => $entry['ref_type'],
+            'amount' => $entry['amount'] ?? null,
+            'balance' => $entry['balance'] ?? null,
+            'date' => CarbonImmutable::parse($entry['date']),
+            'context_id' => $entry['context_id'] ?? null,
+            'context_id_type' => $entry['context_id_type'] ?? null,
+            'description' => mb_substr($entry['description'] ?? '', 0, 500),
+        ], $entries);
+
+        // The journal is append-only (ESI serves ~30 days); keep history forever.
+        foreach (array_chunk($rows, 500) as $chunk) {
+            DB::table('wallet_journal')->upsert($chunk, 'journal_id');
+        }
     }
 
     private function syncAssets(Character $character): void

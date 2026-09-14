@@ -101,4 +101,30 @@ return [
         'broker_relations_skill_id' => 3446,
     ],
 
+    /*
+    |--------------------------------------------------------------------------
+    | Farming
+    |--------------------------------------------------------------------------
+    |
+    | Pirate faction per region (community-documented spawn table) — decides
+    | what deadspace loot drops where. Region names as in the SDE.
+    |
+    */
+
+    'factions' => [
+        'Serpentis' => ['Essence', 'Everyshore', 'Sinq Laison', 'Verge Vendor', 'Solitude', 'Placid',
+            'Fountain', 'Syndicate', 'Cloud Ring', 'Outer Ring'],
+        'Guristas' => ['The Forge', 'The Citadel', 'Lonetrek', 'Black Rise',
+            'Venal', 'Tenal', 'Tribute', 'Branch', 'Deklein', 'Pure Blind', 'Vale of the Silent'],
+        'Blood Raiders' => ['Aridia', 'Kador', 'Kor-Azor', 'Genesis', 'Khanid',
+            'Delve', 'Querious', 'Period Basis'],
+        'Sansha' => ['Domain', 'Devoid', 'Tash-Murkon', 'The Bleak Lands',
+            'Stain', 'Esoteria', 'Catch', 'Providence', 'Paragon Soul'],
+        'Angel Cartel' => ['Heimatar', 'Metropolis', 'Molden Heath', 'Derelik',
+            'Curse', 'Great Wildlands', 'Insmother', 'Detorid', 'Immensea',
+            'Scalding Pass', 'Wicked Creek', 'Cache', 'Feythabolis', 'Omist', 'Tenerifis', 'Impass'],
+        'Rogue Drones' => ['The Kalevala Expanse', 'Etherium Reach', 'Malpais', 'Oasa',
+            'Outer Passage', 'Perrigen Falls', 'The Spire', 'Cobalt Edge'],
+    ],
+
 ];

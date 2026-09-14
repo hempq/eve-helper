@@ -63,6 +63,14 @@ class CharacterSyncServiceTest extends TestCase
             ->andReturn(new EsiResponse([12_345_678.90], $expires));
 
         $esi->shouldReceive('getAllPages')
+            ->with("/characters/{$id}/wallet/journal", [], $character)
+            ->andReturn([
+                ['id' => 555001, 'ref_type' => 'bounty_prizes', 'amount' => 1_500_000.5, 'balance' => 20_000_000.0,
+                    'date' => '2026-09-14T10:00:00Z', 'context_id' => 30000142, 'context_id_type' => 'system_id',
+                    'description' => 'Bounty prizes'],
+            ]);
+
+        $esi->shouldReceive('getAllPages')
             ->with("/characters/{$id}/assets", [], $character)
             ->andReturn([
                 ['item_id' => 9001, 'type_id' => 587, 'quantity' => 1, 'location_id' => 60003760,
@@ -120,6 +128,10 @@ class CharacterSyncServiceTest extends TestCase
         $assets = DB::table('character_assets')->where('character_id', $character->character_id)->get();
         $this->assertCount(2, $assets);
         $this->assertSame(2500, (int) $assets->firstWhere('type_id', 34)->quantity);
+
+        $journal = DB::table('wallet_journal')->where('journal_id', 555001)->first();
+        $this->assertSame('bounty_prizes', $journal->ref_type);
+        $this->assertEqualsWithDelta(1_500_000.5, (float) $journal->amount, 0.01);
     }
 
     public function test_queue_is_replaced_not_appended_on_resync(): void

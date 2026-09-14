@@ -93,6 +93,7 @@
                 <a href="{{ route('planner') }}" @class(['active' => request()->routeIs('planner')])>Planner</a>
                 <a href="{{ route('remap') }}" @class(['active' => request()->routeIs('remap')])>Remap</a>
                 <a href="{{ route('market') }}" @class(['active' => request()->routeIs('market')])>Market</a>
+                <a href="{{ route('farm') }}" @class(['active' => request()->routeIs('farm')])>Farm</a>
             </nav>
             <div class="char-chip">
                 <span><b>{{ $character->name }}</b> · <span class="num">{{ number_format($character->total_sp ?? 0) }} SP</span></span>

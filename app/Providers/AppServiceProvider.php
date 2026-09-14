@@ -50,6 +50,11 @@ class AppServiceProvider extends ServiceProvider
             brokerRelationsSkillId: (int) config('eve.market.broker_relations_skill_id'),
         ));
 
+        $this->app->singleton(\App\Services\Universe\EveScoutService::class, fn (Application $app) => new \App\Services\Universe\EveScoutService(
+            cache: $app->make(Cache::class),
+            userAgent: config('eve.esi.user_agent'),
+        ));
+
         $this->app->singleton(SdeDownloader::class, fn () => new SdeDownloader(
             baseUrl: config('eve.sde.base_url'),
             userAgent: config('eve.esi.user_agent'),
